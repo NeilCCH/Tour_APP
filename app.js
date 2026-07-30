@@ -420,34 +420,65 @@ function openMoveSheet(trip, places, place, dayCount) {
   });
 }
 
-// 住宿:設為某幾天的「出發點 / 回程點」(同一間可跨多天連住,換飯店就設不同天)
+// 住宿:設為某幾天的「出發點 / 回程點」。
+// 便利:設某天「回程」會自動把隔天「出發」也設成同一間(睡哪就從哪出發);
+// 「連住整趟」一鍵把每晚都設成這間。
 function openAnchorSheet(trip, place, dayCount) {
   const dayStart = { ...(trip.dayStart || {}) };
   const dayEnd = { ...(trip.dayEnd || {}) };
-  const rows = [];
-  for (let d = 1; d <= dayCount; d++) {
-    rows.push(`<div class="anchor-day"><span>Day ${d}</span>
-      <button class="chip ${dayStart[d] === place.id ? 'on' : ''}" data-role="start" data-day="${d}">出發</button>
-      <button class="chip ${dayEnd[d] === place.id ? 'on' : ''}" data-role="end" data-day="${d}">回程</button></div>`);
-  }
+  const gridHtml = () => {
+    let r = '';
+    for (let d = 1; d <= dayCount; d++) {
+      r += `<div class="anchor-day"><span>Day ${d}</span>
+        <button class="chip ${dayStart[d] === place.id ? 'on' : ''}" data-role="start" data-day="${d}">出發</button>
+        <button class="chip ${dayEnd[d] === place.id ? 'on' : ''}" data-role="end" data-day="${d}">回程</button></div>`;
+    }
+    return r;
+  };
+  const save = () => db.updateTrip(trip.id, { dayStart, dayEnd });
+
   openSheet(`
     <h2>🏨 ${esc(place.name)}</h2>
-    <p class="meta" style="margin-bottom:12px">設為哪幾天的出發點 / 回程點。${hasCoord(place) ? '' : '<b class="warn">此地點尚未定位,交通估算會缺這一段。</b>'}</p>
-    <div class="anchor-grid">${rows.join('')}</div>
+    <p class="meta" style="margin-bottom:10px">設為哪幾天的出發點 / 回程點。設「回程」會自動把隔天「出發」也設成這間。${hasCoord(place) ? '' : '<b class="warn"> 此地點尚未定位,交通估算會缺這段。</b>'}</p>
+    <button class="btn ghost" id="a-all" style="margin-bottom:8px">🔗 連住整趟（每晚都住這裡）</button>
+    <div class="anchor-grid" id="anchor-grid">${gridHtml()}</div>
     <div class="btn-row">
+      <button class="btn ghost" id="a-clear">清除此住宿的所有設定</button>
       <button class="btn ghost" id="m-edit">編輯地點內容</button>
       <button class="btn ghost" id="m-close">關閉</button>
     </div>
   `, (sheet, close) => {
-    sheet.querySelector('.anchor-grid').addEventListener('click', async (e) => {
+    const grid = sheet.querySelector('#anchor-grid');
+    const redraw = async () => { grid.innerHTML = gridHtml(); await save(); render(); };
+
+    grid.addEventListener('click', async (e) => {
       const b = e.target.closest('.chip'); if (!b) return;
-      const day = Number(b.dataset.day);
-      const map = b.dataset.role === 'start' ? dayStart : dayEnd;
-      if (map[day] === place.id) delete map[day]; else map[day] = place.id; // 設同天同角色會覆蓋別的地點
-      b.classList.toggle('on', map[day] === place.id);
-      await db.updateTrip(trip.id, { dayStart, dayEnd });
-      render();
+      const day = Number(b.dataset.day), role = b.dataset.role;
+      const map = role === 'start' ? dayStart : dayEnd;
+      const on = map[day] !== place.id;
+      if (on) map[day] = place.id; else delete map[day];
+      // 自動串連:回程 → 次日出發同一間;取消回程則一併取消次日出發
+      if (role === 'end' && day + 1 <= dayCount) {
+        if (on) dayStart[day + 1] = place.id;
+        else if (dayStart[day + 1] === place.id) delete dayStart[day + 1];
+      }
+      await redraw();
     });
+
+    sheet.querySelector('#a-all').onclick = async () => {
+      for (let d = 1; d <= dayCount; d++) {
+        if (d < dayCount) dayEnd[d] = place.id;   // 每晚(最後一天不設回程)
+        if (d > 1) dayStart[d] = place.id;        // 隔天出發(第一天不動)
+      }
+      await redraw();
+    };
+    sheet.querySelector('#a-clear').onclick = async () => {
+      for (let d = 1; d <= dayCount; d++) {
+        if (dayStart[d] === place.id) delete dayStart[d];
+        if (dayEnd[d] === place.id) delete dayEnd[d];
+      }
+      await redraw();
+    };
     sheet.querySelector('#m-edit').onclick = () => { close(); openPlaceSheet(trip.id, place); };
     sheet.querySelector('#m-close').onclick = () => { close(); render(); };
   });
