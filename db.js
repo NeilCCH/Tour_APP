@@ -91,17 +91,22 @@ function notify() { try { _onChange && _onChange(); } catch (_) {} }
 const active = (rows) => rows.filter((r) => !r.deleted);
 
 // ---- Trip ------------------------------------------------------------------
-async function createTrip({ name, startDate = '', endDate = '', people = 1 }) {
+async function createTrip({ name, startDate = '', endDate = '', people = 1, ownerId = null }) {
   const now = Date.now();
   const trip = {
     id: newId(), name: (name || '未命名旅程').trim(),
     startDate, endDate, people: Number(people) || 1,
+    ownerId,                        // 這趟的擁有者(登入者 id);列表依此過濾
+    isPublic: false,                // 是否開放公開分享
     createdAt: now, updatedAt: now, deleted: false,
   };
   await put('trips', trip); notify(); return trip;
 }
-async function listTrips() {
-  return active(await getAll('trips')).sort((a, b) => b.createdAt - a.createdAt);
+// 只列出「屬於 ownerId」的旅程。未登入(ownerId 為空)則回傳空陣列。
+async function listTrips(ownerId) {
+  if (!ownerId) return [];
+  return active(await getAll('trips')).filter((t) => t.ownerId === ownerId)
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 async function getTrip(id) {
   const t = await get('trips', id);

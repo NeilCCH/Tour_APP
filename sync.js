@@ -32,12 +32,13 @@ export const signOut = () => supabase.auth.signOut();
 
 // ---- 雲端 <-> 本地 資料形狀轉換 ----------------------------------------------
 // 雲端每張表欄位:id(uuid) / user_id / data(jsonb=整筆本地物件) / updated_at / deleted
-const fromCloud = (c) => ({ ...(c.data || {}), id: c.id, updatedAt: Number(c.updated_at) || 0, deleted: !!c.deleted });
+// 拉回時用雲端權威的 user_id 蓋上 ownerId,確保資料正確歸屬到擁有者
+const fromCloud = (c) => ({ ...(c.data || {}), id: c.id, updatedAt: Number(c.updated_at) || 0, deleted: !!c.deleted, ownerId: c.user_id });
 const toCloud = (l) => ({ id: l.id, data: l, updated_at: l.updatedAt || 0, deleted: !!l.deleted });
 // 註:upsert 時不帶 user_id,交給資料表預設值 auth.uid() 自動填入(RLS 保護)。
 
 async function syncTable(table) {
-  const { data: cloudRows, error } = await supabase.from(table).select('id,data,updated_at,deleted');
+  const { data: cloudRows, error } = await supabase.from(table).select('id,data,updated_at,deleted,user_id');
   if (error) throw error;
 
   const localRows = await db._sync.allRaw(table);

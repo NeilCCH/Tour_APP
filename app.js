@@ -69,6 +69,11 @@ function fmtTime(min) {
   return `${Number.isInteger(h) ? h : h.toFixed(1)} 小時`;
 }
 
+// 目前登入者(從 localStorage 還原,讓離線/重開時也知道是誰;登入狀態變動時更新)
+let currentUser = localStorage.getItem('authUserId')
+  ? { id: localStorage.getItem('authUserId'), email: localStorage.getItem('authUserEmail') || '' }
+  : null;
+
 function setHeader(title, showBack) {
   header.classList.toggle('has-back', !!showBack);
   header.querySelector('h1').textContent = title;
@@ -83,20 +88,36 @@ function parseRoute() {
 }
 
 async function render() {
+  // 未登入:一律顯示登入畫面,看不到任何行程
+  if (!currentUser) { renderLoginGate(); return; }
   const r = parseRoute();
   if (r.view === 'trip') {
     const trip = await db.getTrip(r.tripId);
-    if (!trip) { location.hash = ''; return; }
+    // 找不到,或不是自己的行程 → 回首頁(避免用網址看到別人的行程)
+    if (!trip || (trip.ownerId && trip.ownerId !== currentUser.id)) { location.hash = ''; return; }
     await renderTrip(trip);
   } else {
     await renderHome();
   }
 }
 
+// 未登入的把關畫面
+function renderLoginGate() {
+  setHeader('旅遊規劃', false);
+  app.innerHTML = `
+    <div class="empty">
+      <div class="big">${ic('suitcase')}</div>
+      <p><b>請先登入</b><br>登入後才能建立與檢視你的行程。<br>你的行程只有你自己看得到。</p>
+      <button class="btn primary" id="gate-login" style="max-width:16rem;margin:1.2rem auto 0">登入 / 註冊</button>
+    </div>`;
+  app.querySelector('#gate-login').onclick = openAuthSheet;
+  setFab(null);
+}
+
 // ---- 首頁：旅程列表 --------------------------------------------------------
 async function renderHome() {
   setHeader('我的旅程', false);
-  const trips = await db.listTrips();
+  const trips = await db.listTrips(currentUser.id);
 
   if (trips.length === 0) {
     app.innerHTML = `
@@ -582,6 +603,8 @@ function setFab(handler) {
     fab.textContent = '＋';
     document.body.appendChild(fab);
   }
+  if (!handler) { fab.style.display = 'none'; return; } // 未登入等情況隱藏
+  fab.style.display = 'flex';
   fab.onclick = handler;
 }
 
@@ -632,7 +655,7 @@ function openTripSheet(trip = null) {
       };
       if (!data.name) { sheet.querySelector('#f-name').focus(); return; }
       if (editing) await db.updateTrip(trip.id, data);
-      else { const t = await db.createTrip(data); location.hash = `#/trip/${t.id}`; }
+      else { const t = await db.createTrip({ ...data, ownerId: currentUser?.id }); location.hash = `#/trip/${t.id}`; }
       close(); render();
     };
     if (editing) sheet.querySelector('#f-del').onclick = async () => {
@@ -784,9 +807,25 @@ acctBtn.addEventListener('click', openAuthSheet);
 header.appendChild(acctBtn);
 
 function updateAcct() {
-  if (!cloud) { acctBtn.textContent = '☁︎'; return; }
-  if (!cloudUser) { acctBtn.textContent = '登入'; return; }
+  if (!currentUser) { acctBtn.textContent = '登入'; return; }
+  if (!cloud) { acctBtn.textContent = '☁︎ 已登入'; return; }
   acctBtn.textContent = { syncing: '⟳ 同步中', synced: '✓ 已同步', error: '⚠ 未同步' }[cloudState] || '☁︎ 已登入';
+}
+
+// 更新登入者(供把關與依使用者過濾),並記到 localStorage 讓重開/離線也記得
+function setAuthUser(user) {
+  cloudUser = user;
+  if (user) {
+    currentUser = { id: user.id, email: user.email || '' };
+    localStorage.setItem('authUserId', user.id);
+    localStorage.setItem('authUserEmail', user.email || '');
+  } else {
+    currentUser = null;
+    localStorage.removeItem('authUserId');
+    localStorage.removeItem('authUserEmail');
+  }
+  updateAcct();
+  render();
 }
 
 async function initCloud() {
@@ -803,7 +842,7 @@ async function initCloud() {
     else if (s && s.startsWith('error')) cloudState = 'error';
     updateAcct();
   });
-  cloudUser = await cloud.initAuth((user) => { cloudUser = user; updateAcct(); render(); });
+  await cloud.initAuth(setAuthUser); // 登入狀態變動 → 更新使用者、重繪(含把關)
   updateAcct();
 }
 
@@ -823,7 +862,7 @@ function openAuthSheet() {
       sheet.querySelector('#a-cancel').onclick = close;
       sheet.querySelector('#a-sync').onclick = () => { cloud.fullSync().catch(() => {}); close(); };
       sheet.querySelector('#a-out').onclick = async () => {
-        await cloud.signOut(); cloudUser = null; updateAcct(); close(); render();
+        await cloud.signOut(); close(); setAuthUser(null);
       };
     });
     return;
