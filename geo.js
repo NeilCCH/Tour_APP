@@ -20,13 +20,37 @@ export function haversine(a, b) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-// 交通估算（PRD 4.3：先用直線距離×係數當保底,不打真實 API）
-// 近距離視為步行,較遠視為車程/大眾運輸,回傳 { km, minutes, mode }。
-export function legEstimate(a, b) {
+// 多模式交通估算（PRD 4.3：先用直線距離×係數當保底,不打真實 API）
+// 回傳 { km, modes:[{icon,label,minutes}] }：步行/巴士/捷運/駕車。
+// 註:這是粗估（各模式給一個平均時速,含等車/繞路的折算），之後可換真實路線 API。
+export function legModes(a, b) {
   const straight = haversine(a, b);
-  const km = straight * 1.3; // 直線→實際路徑的粗略係數
-  if (km < 1.5) return { km, minutes: Math.max(1, Math.round((km / 4.5) * 60)), mode: '步行' };
-  return { km, minutes: Math.max(1, Math.round((km / 22) * 60)), mode: '車程' };
+  const roadKm = straight * 1.25;
+  const mk = (icon, label, kmh, km) => ({ icon, label, minutes: Math.max(1, Math.round((km / kmh) * 60)) });
+  const modes = [];
+  if (roadKm < 8) modes.push(mk('🚶', '步行', 4.5, roadKm)); // 太遠就不列步行
+  modes.push(mk('🚌', '巴士', 14, roadKm));
+  modes.push(mk('🚇', '捷運', 32, straight * 1.15));
+  modes.push(mk('🚗', '駕車', 24, roadKm));
+  return { km: roadKm, modes };
+}
+
+// 從指定「出發點」開始就近串連（住宿當天出發點用）。沒給 start 就退回一般最近鄰。
+export function orderFromStart(items, start) {
+  if (items.length <= 1) return items.slice();
+  if (!start) return nearestOrder(items);
+  const remaining = items.slice();
+  const ordered = [];
+  let cur = start;
+  while (remaining.length) {
+    let bi = 0, bd = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const d = haversine(cur, remaining[i]);
+      if (d < bd) { bd = d; bi = i; }
+    }
+    cur = remaining[bi]; ordered.push(cur); remaining.splice(bi, 1);
+  }
+  return ordered;
 }
 
 // 就近排序（最近鄰):從 startId(或第一個)開始,每次接最近的下一站

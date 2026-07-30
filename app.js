@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
-import { geocode, legEstimate, nearestOrder, kmeansDays, orderClusters } from './geo.js';
+import { geocode, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
 const app = document.getElementById('app');
 const header = document.getElementById('header');
@@ -129,61 +129,99 @@ function listBody(places) {
   return body;
 }
 
-// 「行程」分頁:依天數排,底下是候選池
+const hasCoord = (p) => p && p.lat != null && p.lng != null;
+
+// 所有被設為某天「出發/回程」錨點的地點 id
+function anchorIdSet(trip) {
+  const s = new Set();
+  for (const m of [trip.dayStart, trip.dayEnd]) {
+    if (m) for (const k of Object.keys(m)) if (m[k]) s.add(m[k]);
+  }
+  return s;
+}
+
+// 兩點之間的多模式交通估時（兩點都已定位才顯示）
+function legHtml(a, b) {
+  if (!(hasCoord(a) && hasCoord(b))) return '';
+  const { km, modes } = legModes(a, b);
+  const kmTxt = km < 1 ? '<1 公里' : `約 ${km.toFixed(1)} 公里`;
+  const ms = modes.map((m) => `${m.icon}${m.minutes}`).join(' ');
+  return `<div class="leg">↓ ${kmTxt} ｜ ${ms} 分（估）</div>`;
+}
+
+function sightCard(p, i, n) {
+  const bits = placeMetaBits(p);
+  return `
+    <div class="card itin" data-move="${esc(p.id)}">
+      <div class="itin-main">
+        <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+          <span class="tag cat">${esc(p.category)}</span></h3>
+        ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
+      </div>
+      <div class="reorder">
+        <button data-up="${esc(p.id)}" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button data-down="${esc(p.id)}" ${i === n - 1 ? 'disabled' : ''}>▼</button>
+      </div>
+    </div>`;
+}
+
+function anchorRow(role, p) {
+  const warn = hasCoord(p) ? '' : ' <span class="warn">未定位</span>';
+  return `<div class="card anchor" data-move="${esc(p.id)}">🏨 ${role}・${esc(p.name)}${warn}</div>`;
+}
+
+// 「行程」分頁:每天 出發點 → 景點(就近) → 回程點,底下候選池
 function planBody(trip, places, dayCount) {
   const datesFixed = !!(trip.startDate && trip.endDate);
-  let body = `<button class="btn primary" id="suggest" style="margin-bottom:12px">✨ 建議安排（依距離分天＋排順序）</button>`;
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const anchors = anchorIdSet(trip);
+  let body = `<button class="btn primary" id="suggest" style="margin-bottom:12px">✨ 建議安排</button>`;
+
   for (let day = 1; day <= dayCount; day++) {
-    const group = places.filter((p) => p.assignedDay === day)
+    const startP = trip.dayStart?.[day] ? byId.get(trip.dayStart[day]) : null;
+    const endP = trip.dayEnd?.[day] ? byId.get(trip.dayEnd[day]) : null;
+    const sights = places.filter((p) => p.assignedDay === day && !anchors.has(p.id))
       .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
     const date = datesFixed ? ` ・ ${dayDateLabel(trip.startDate, day)}` : '';
     body += `<div class="section-title">Day ${day}${date}</div>`;
-    if (group.length === 0) {
+
+    const chain = [];
+    if (startP) chain.push(['出發', startP]);
+    sights.forEach((p) => chain.push(['sight', p]));
+    if (endP) chain.push(['回程', endP]);
+
+    if (chain.length === 0) {
       body += `<div class="day-empty">尚未安排 — 從下方候選池點地點排進來</div>`;
     } else {
-      body += group.map((p, i) => {
-        const bits = placeMetaBits(p);
-        const card = `
-          <div class="card itin" data-move="${esc(p.id)}">
-            <div class="itin-main">
-              <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
-                <span class="tag cat">${esc(p.category)}</span></h3>
-              ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
-            </div>
-            <div class="reorder">
-              <button data-up="${esc(p.id)}" ${i === 0 ? 'disabled' : ''}>▲</button>
-              <button data-down="${esc(p.id)}" ${i === group.length - 1 ? 'disabled' : ''}>▼</button>
-            </div>
-          </div>`;
-        // 兩站之間的距離與估計交通時間（兩點都已定位才顯示）
-        const nx = group[i + 1];
-        let leg = '';
-        if (nx && p.lat != null && p.lng != null && nx.lat != null && nx.lng != null) {
-          const e = legEstimate(p, nx);
-          const kmTxt = e.km < 1 ? '<1 公里' : `約 ${e.km.toFixed(1)} 公里`;
-          leg = `<div class="leg">↓ ${kmTxt} ・ ${e.mode}約 ${e.minutes} 分（估）</div>`;
-        }
-        return card + leg;
-      }).join('');
-      const stay = group.reduce((s, p) => s + (p.estimatedStay || 0), 0);
-      const cost = group.reduce((s, p) => s + (p.estimatedCost || 0), 0);
-      const full = stay > 600 ? ' ・ <span class="warn">這天有點滿</span>' : '';
-      body += `<div class="day-sum">共 ${group.length} 站 ・ ⏱ ${stayText(stay) || '0 分'} ・ 💰 ${cost}${full}</div>`;
+      chain.forEach(([kind, p], idx) => {
+        if (idx > 0) body += legHtml(chain[idx - 1][1], p);
+        if (kind === 'sight') body += sightCard(p, sights.indexOf(p), sights.length);
+        else body += anchorRow(kind, p);
+      });
+      if (sights.length) {
+        const stay = sights.reduce((s, p) => s + (p.estimatedStay || 0), 0);
+        const cost = sights.reduce((s, p) => s + (p.estimatedCost || 0), 0);
+        const full = stay > 600 ? ' ・ <span class="warn">這天有點滿</span>' : '';
+        body += `<div class="day-sum">共 ${sights.length} 站 ・ ⏱ ${stayText(stay) || '0 分'} ・ 💰 ${cost}${full}</div>`;
+      }
     }
   }
   if (!datesFixed) body += `<button class="btn ghost" id="add-day" style="margin:4px 0 8px">＋ 加一天</button>`;
 
-  const pool = places.filter((p) => !p.assignedDay).sort((a, b) => a.createdAt - b.createdAt);
+  const pool = places.filter((p) => !p.assignedDay && !anchors.has(p.id)).sort((a, b) => a.createdAt - b.createdAt);
   body += `<div class="section-title">候選池（${pool.length}）</div>`;
   if (pool.length === 0) {
     body += `<div class="day-empty">沒有待排的地點</div>`;
   } else {
-    body += pool.map((p) => `
-      <div class="card" data-move="${esc(p.id)}">
-        <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
-          <span class="tag cat">${esc(p.category)}</span></h3>
-        <div class="meta">點一下 → 排進某一天</div>
-      </div>`).join('');
+    body += pool.map((p) => {
+      const hint = p.category === '住宿' ? '點一下 → 設為某天的出發/回程點' : '點一下 → 排進某一天';
+      return `
+        <div class="card" data-move="${esc(p.id)}">
+          <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+            <span class="tag cat">${esc(p.category)}</span></h3>
+          <div class="meta">${hint}</div>
+        </div>`;
+    }).join('');
   }
   return body;
 }
@@ -254,26 +292,65 @@ async function renderTrip(trip) {
 }
 
 // 建議安排:把「已定位」的地點依距離分成 dayCount 天,每天就近排序（PRD 4.2）
-async function suggestArrange(trip, places, dayCount) {
-  const located = places.filter((p) => p.lat != null && p.lng != null);
-  const missing = places.length - located.length;
-  if (located.length < 2) {
-    alert('至少要有 2 個「已定位」的地點才能建議安排。\n請先打開地點、按「📍 用名稱定位」。');
-    return;
-  }
-  const msg = `會把 ${located.length} 個已定位的地點,依距離重新分成 ${dayCount} 天並排出順序。`
-    + (missing ? `\n（有 ${missing} 個還沒定位的地點不會被移動）` : '')
-    + '\n\n要套用嗎?（套用後仍可手動微調）';
-  if (!confirm(msg)) return;
+// 建議安排:兩種方式。預設「只優化每天順序」——不把地點跨日移動。
+function suggestArrange(trip, places, dayCount) {
+  openSheet(`
+    <h2>✨ 建議安排</h2>
+    <p class="meta" style="margin-bottom:14px">選一種方式（都只影響已定位的景點）:</p>
+    <div class="btn-row">
+      <button class="btn primary" id="s-order">只優化每天順序
+        <br><span style="font-weight:400;font-size:12.5px;opacity:.85">保留你分好的天,只把每天景點依距離就近重排（有出發點就從那裡起算）</span></button>
+      <button class="btn ghost" id="s-recluster">跨日重新分配
+        <br><span style="font-size:12.5px;opacity:.8">把所有已定位景點依距離重新分到各天（會改動你目前的分天）</span></button>
+      <button class="btn ghost" id="s-cancel">取消</button>
+    </div>
+  `, (sheet, close) => {
+    sheet.querySelector('#s-cancel').onclick = close;
+    sheet.querySelector('#s-order').onclick = async () => { close(); await suggestOrderOnly(trip, places, dayCount); };
+    sheet.querySelector('#s-recluster').onclick = async () => {
+      close();
+      if (!confirm('這會把所有已定位景點依距離「重新分到各天」,覆蓋你目前的分天安排。要繼續嗎?')) return;
+      await suggestRecluster(trip, places, dayCount);
+    };
+  });
+}
 
+// 只優化每天順序:各天景點依距離就近重排,有出發點就從出發點起算。不跨日移動。
+async function suggestOrderOnly(trip, places, dayCount) {
+  const anchors = anchorIdSet(trip);
+  const byId = new Map(places.map((p) => [p.id, p]));
+  let touched = 0;
+  for (let day = 1; day <= dayCount; day++) {
+    const startP = trip.dayStart?.[day] ? byId.get(trip.dayStart[day]) : null;
+    const startCoord = hasCoord(startP) ? { lat: startP.lat, lng: startP.lng } : null;
+    const sights = places.filter((p) => p.assignedDay === day && !anchors.has(p.id));
+    const located = sights.filter(hasCoord);
+    const unlocated = sights.filter((p) => !hasCoord(p));
+    if (located.length < 1) continue;
+    const ordered = orderFromStart(located.map((p) => ({ id: p.id, lat: p.lat, lng: p.lng })), startCoord);
+    const ids = [...ordered.map((o) => o.id), ...unlocated.map((u) => u.id)];
+    for (let i = 0; i < ids.length; i++) { await db.updatePlace(ids[i], { orderIndex: i + 1 }); touched++; }
+  }
+  if (!touched) alert('沒有可排序的已定位景點。請先幫景點定位,並把景點排進某天。');
+  render();
+}
+
+// 跨日重新分配:所有已定位景點依距離分成各天,每天再從出發點就近排序。
+async function suggestRecluster(trip, places, dayCount) {
+  const anchors = anchorIdSet(trip);
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const located = places.filter((p) => !anchors.has(p.id) && hasCoord(p));
+  if (located.length < 2) { alert('至少要有 2 個已定位的景點才能重新分配。'); return; }
   const clusters = orderClusters(kmeansDays(
     located.map((p) => ({ id: p.id, lat: p.lat, lng: p.lng })), dayCount));
-  const byId = new Map(places.map((p) => [p.id, p]));
   for (let d = 0; d < clusters.length; d++) {
-    const ordered = nearestOrder(clusters[d]);
+    const day = d + 1;
+    const startP = trip.dayStart?.[day] ? byId.get(trip.dayStart[day]) : null;
+    const startCoord = hasCoord(startP) ? { lat: startP.lat, lng: startP.lng } : null;
+    const ordered = orderFromStart(clusters[d], startCoord);
     for (let i = 0; i < ordered.length; i++) {
       const place = byId.get(ordered[i].id);
-      const patch = { assignedDay: d + 1, orderIndex: i + 1 };
+      const patch = { assignedDay: day, orderIndex: i + 1 };
       if (place.status === '候選') patch.status = '已排入';
       await db.updatePlace(ordered[i].id, patch);
     }
@@ -316,6 +393,7 @@ async function reorder(places, place, dir) {
 }
 
 function openMoveSheet(trip, places, place, dayCount) {
+  if (place.category === '住宿') return openAnchorSheet(trip, place, dayCount);
   const cur = place.assignedDay || 0;
   const chips = [`<div class="chip ${cur === 0 ? 'on' : ''}" data-day="0">候選池</div>`];
   for (let d = 1; d <= dayCount; d++) {
@@ -339,6 +417,39 @@ function openMoveSheet(trip, places, place, dayCount) {
     });
     sheet.querySelector('#m-edit').onclick = () => { close(); openPlaceSheet(trip.id, place); };
     sheet.querySelector('#m-cancel').onclick = close;
+  });
+}
+
+// 住宿:設為某幾天的「出發點 / 回程點」(同一間可跨多天連住,換飯店就設不同天)
+function openAnchorSheet(trip, place, dayCount) {
+  const dayStart = { ...(trip.dayStart || {}) };
+  const dayEnd = { ...(trip.dayEnd || {}) };
+  const rows = [];
+  for (let d = 1; d <= dayCount; d++) {
+    rows.push(`<div class="anchor-day"><span>Day ${d}</span>
+      <button class="chip ${dayStart[d] === place.id ? 'on' : ''}" data-role="start" data-day="${d}">出發</button>
+      <button class="chip ${dayEnd[d] === place.id ? 'on' : ''}" data-role="end" data-day="${d}">回程</button></div>`);
+  }
+  openSheet(`
+    <h2>🏨 ${esc(place.name)}</h2>
+    <p class="meta" style="margin-bottom:12px">設為哪幾天的出發點 / 回程點。${hasCoord(place) ? '' : '<b class="warn">此地點尚未定位,交通估算會缺這一段。</b>'}</p>
+    <div class="anchor-grid">${rows.join('')}</div>
+    <div class="btn-row">
+      <button class="btn ghost" id="m-edit">編輯地點內容</button>
+      <button class="btn ghost" id="m-close">關閉</button>
+    </div>
+  `, (sheet, close) => {
+    sheet.querySelector('.anchor-grid').addEventListener('click', async (e) => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      const day = Number(b.dataset.day);
+      const map = b.dataset.role === 'start' ? dayStart : dayEnd;
+      if (map[day] === place.id) delete map[day]; else map[day] = place.id; // 設同天同角色會覆蓋別的地點
+      b.classList.toggle('on', map[day] === place.id);
+      await db.updateTrip(trip.id, { dayStart, dayEnd });
+      render();
+    });
+    sheet.querySelector('#m-edit').onclick = () => { close(); openPlaceSheet(trip.id, place); };
+    sheet.querySelector('#m-close').onclick = () => { close(); render(); };
   });
 }
 
