@@ -58,6 +58,12 @@ header .back {
 header.has-back .back { display: inline-flex; }
 header h1 { font-size: 20px; font-weight: 700; flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header .acct {
+  flex: none; background: var(--accent-soft); color: var(--accent);
+  border: none; border-radius: 999px; padding: 6px 12px;
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+header .acct:active { opacity: .7; }
 
 main { padding: 16px; padding-bottom: calc(var(--safe-bottom) + 96px); max-width: 640px; margin: 0 auto; }
 

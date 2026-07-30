@@ -307,10 +307,105 @@ window.addEventListener('online', updateOnline);
 window.addEventListener('offline', updateOnline);
 updateOnline();
 
+// ---- 帳號 / 雲端同步（Supabase）-------------------------------------------
+// sync.js 是「動態載入」的:萬一離線或 CDN 被擋,載入失敗也只是沒有雲端,
+// App 仍能純本地運作。
+let cloud = null;         // sync.js 模組（null = 純本地）
+let cloudUser = null;     // 目前登入者
+let cloudState = 'idle';  // idle | syncing | synced | error
+
+const acctBtn = document.createElement('button');
+acctBtn.className = 'acct';
+acctBtn.addEventListener('click', openAuthSheet);
+header.appendChild(acctBtn);
+
+function updateAcct() {
+  if (!cloud) { acctBtn.textContent = '☁︎'; return; }
+  if (!cloudUser) { acctBtn.textContent = '登入'; return; }
+  acctBtn.textContent = { syncing: '⟳ 同步中', synced: '✓ 已同步', error: '⚠ 未同步' }[cloudState] || '☁︎ 已登入';
+}
+
+async function initCloud() {
+  updateAcct();
+  try {
+    cloud = await import('./sync.js');
+  } catch (e) {
+    console.warn('雲端模組載入失敗,以純本地模式運作', e);
+    cloud = null; updateAcct(); return;
+  }
+  cloud.onStatus((s) => {
+    if (s === 'syncing') cloudState = 'syncing';
+    else if (s === 'synced') { cloudState = 'synced'; render(); }
+    else if (s && s.startsWith('error')) cloudState = 'error';
+    updateAcct();
+  });
+  cloudUser = await cloud.initAuth((user) => { cloudUser = user; updateAcct(); render(); });
+  updateAcct();
+}
+
+function openAuthSheet() {
+  if (!cloud) { alert('雲端功能載入失敗（可能離線或被網路阻擋）。App 仍可離線使用,資料存在本機。'); return; }
+
+  if (cloudUser) {
+    const stTxt = { syncing: '同步中…', synced: '已同步 ✓', error: '上次同步失敗 ⚠' }[cloudState] || '—';
+    openSheet(`
+      <h2>雲端帳號</h2>
+      <p class="meta" style="margin-bottom:16px">已登入:<b>${esc(cloudUser.email || '')}</b><br>狀態:${stTxt}</p>
+      <div class="btn-row">
+        <button class="btn primary" id="a-sync">立即同步</button>
+        <button class="btn danger" id="a-out">登出</button>
+        <button class="btn ghost" id="a-cancel">關閉</button>
+      </div>`, (sheet, close) => {
+      sheet.querySelector('#a-cancel').onclick = close;
+      sheet.querySelector('#a-sync').onclick = () => { cloud.fullSync().catch(() => {}); close(); };
+      sheet.querySelector('#a-out').onclick = async () => {
+        await cloud.signOut(); cloudUser = null; updateAcct(); close(); render();
+      };
+    });
+    return;
+  }
+
+  openSheet(`
+    <h2>登入雲端</h2>
+    <p class="meta" style="margin-bottom:16px">登入後,資料會備份到雲端,換手機也不會不見。</p>
+    <label class="field"><span class="lab">Email</span>
+      <input id="a-email" type="email" autocomplete="username" placeholder="you@example.com"></label>
+    <label class="field"><span class="lab">密碼</span>
+      <input id="a-pass" type="password" autocomplete="current-password" placeholder="至少 6 碼"></label>
+    <div id="a-msg" class="meta" style="min-height:18px"></div>
+    <div class="btn-row">
+      <button class="btn primary" id="a-login">登入</button>
+      <button class="btn ghost" id="a-signup">第一次使用,註冊新帳號</button>
+      <button class="btn ghost" id="a-cancel">取消</button>
+    </div>`, (sheet, close) => {
+    const msg = sheet.querySelector('#a-msg');
+    const vals = () => [sheet.querySelector('#a-email').value.trim(), sheet.querySelector('#a-pass').value];
+    const fail = (t) => { msg.style.color = 'var(--danger)'; msg.textContent = t; };
+    sheet.querySelector('#a-cancel').onclick = close;
+    sheet.querySelector('#a-login').onclick = async () => {
+      const [email, pass] = vals();
+      msg.style.color = 'var(--text-dim)'; msg.textContent = '登入中…';
+      const { error } = await cloud.signIn(email, pass);
+      if (error) return fail('登入失敗:' + error.message);
+      close();
+    };
+    sheet.querySelector('#a-signup').onclick = async () => {
+      const [email, pass] = vals();
+      if (!email || pass.length < 6) return fail('請輸入 Email 和至少 6 碼密碼');
+      msg.style.color = 'var(--text-dim)'; msg.textContent = '註冊中…';
+      const { data, error } = await cloud.signUp(email, pass);
+      if (error) return fail('註冊失敗:' + error.message);
+      if (data.session) close();  // 已直接登入（未開啟 Email 驗證時）
+      else { msg.style.color = 'var(--accent)'; msg.textContent = '註冊成功!請收 Email 確認信、點連結後再回來登入。'; }
+    };
+  });
+}
+
 // ---- 啟動 ------------------------------------------------------------------
 window.addEventListener('hashchange', render);
 header.querySelector('.back').addEventListener('click', () => { location.hash = ''; });
 render();
+initCloud();
 
 // 註冊 Service Worker（讓 App 可離線、可加入主畫面）
 if ('serviceWorker' in navigator) {
