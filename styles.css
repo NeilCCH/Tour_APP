@@ -1,5 +1,8 @@
 /* styles.css — 旅遊規劃 App
-   行動優先、字級偏大、藍色品牌(對齊 logo)、有設計感。支援淺色/深色。 */
+   字級偏大且用 rem(會跟隨手機/瀏覽器的文字大小設定)、藍色品牌、有設計感。 */
+
+/* 用 rem:字級跟著使用者的系統/瀏覽器文字大小縮放。106.25% → 1rem≈17px 起 */
+html { font-size: 106.25%; -webkit-text-size-adjust: 100%; }
 
 :root {
   --accent: #1f6feb;
@@ -37,7 +40,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
   background: var(--bg);
   color: var(--text);
-  font-size: 17px;
+  font-size: 1.06rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   min-height: 100dvh;
@@ -48,123 +51,142 @@ header {
   position: sticky; top: 0; z-index: 10;
   background: linear-gradient(135deg, #2f8bff 0%, #1f6feb 45%, #0d3aa8 100%);
   color: #fff;
-  padding: calc(var(--safe-top) + 16px) 18px 18px;
-  border-radius: 0 0 22px 22px;
+  padding: calc(var(--safe-top) + 1rem) 1.1rem 1.1rem;
+  border-radius: 0 0 24px 24px;
   box-shadow: 0 6px 20px rgba(13,58,168,.28);
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: .6rem;
 }
 header .back {
   background: rgba(255,255,255,.18); border: none; color: #fff;
-  font-size: 15px; font-weight: 600; cursor: pointer;
-  padding: 7px 12px; border-radius: 999px;
+  font-size: .95rem; font-weight: 700; cursor: pointer;
+  padding: .5rem .8rem; border-radius: 999px;
   display: none; align-items: center; gap: 2px;
 }
 header.has-back .back { display: inline-flex; }
 header h1 {
-  font-size: 24px; font-weight: 800; flex: 1; min-width: 0; letter-spacing: .01em;
+  font-size: 1.55rem; font-weight: 800; flex: 1; min-width: 0; letter-spacing: .01em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 header .acct {
   flex: none; background: rgba(255,255,255,.2); color: #fff; border: none;
-  border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 700;
+  border-radius: 999px; padding: .5rem .9rem; font-size: .9rem; font-weight: 700;
   cursor: pointer; font-family: inherit; backdrop-filter: blur(4px);
 }
 header .acct:active { opacity: .75; }
 
-main { padding: 18px; padding-bottom: calc(var(--safe-bottom) + 100px); max-width: 660px; margin: 0 auto; }
+main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-width: 680px; margin: 0 auto; }
 
 /* ---- 卡片 ---- */
 .card {
   background: var(--card); border-radius: var(--radius);
   box-shadow: var(--shadow); border: 1px solid var(--border);
-  padding: 18px; margin-bottom: 13px; cursor: pointer;
-  transition: transform .08s ease;
+  padding: 1.1rem; margin-bottom: .8rem; cursor: pointer;
+  transition: transform .08s ease, background .12s ease;
 }
 .card:active { transform: scale(.985); }
-.card h3 { font-size: 18.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.card .meta { color: var(--text-dim); font-size: 15px; margin-top: 5px; }
+.card h3 { font-size: 1.18rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.card .meta { color: var(--text-dim); font-size: .98rem; margin-top: .35rem; }
+
+/* 首頁:每個行程一種淺色塊,按下時加深 */
+.card.trip { background: color-mix(in srgb, var(--tc) 13%, var(--card)); border-left: 6px solid var(--tc); }
+.card.trip:active { background: color-mix(in srgb, var(--tc) 28%, var(--card)); }
+.card.trip h3 { font-size: 1.28rem; }
+
+/* ---- 行程標頭(統計)---- */
+.trip-hero {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1.15rem; margin-bottom: 1rem;
+}
+.trip-hero .dates { font-size: 1.05rem; font-weight: 700; color: var(--accent);
+  margin-bottom: .9rem; display: flex; align-items: center; gap: .4rem; }
+.trip-hero .stats { display: flex; gap: .6rem; }
+.stat { flex: 1; background: color-mix(in srgb, var(--accent) 9%, var(--card));
+  border-radius: 14px; padding: .8rem .5rem; text-align: center; }
+.stat .v { font-size: 1.8rem; font-weight: 800; color: var(--accent); line-height: 1.05; }
+.stat .l { font-size: .88rem; font-weight: 600; color: var(--text-dim); margin-top: .15rem; }
+.trip-hero .edit { width: auto; padding: .5rem 0; margin-top: .8rem; font-size: .95rem; }
 
 /* ---- 標籤 ---- */
 .tag {
-  display: inline-block; font-size: 12.5px; font-weight: 700;
-  padding: 3px 10px; border-radius: 999px;
+  display: inline-block; font-size: .8rem; font-weight: 700;
+  padding: .18rem .6rem; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent);
 }
 .tag.cat { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text-dim); }
-.pin-badge { font-size: 15px; }
+.pin-badge { font-size: .95rem; }
 
-.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.dot { width: .55rem; height: .55rem; border-radius: 50%; display: inline-block; flex: none; }
 .st-候選 { background: #94a3b8; }
 .st-已排入 { background: #2f8bff; }
 .st-已造訪 { background: #16a34a; }
 .st-已造訪・未規劃 { background: #f59e0b; }
 
 /* ---- 區段標題 ---- */
-.section-title { font-size: 14px; font-weight: 800; color: var(--text-dim);
-  letter-spacing: .04em; margin: 24px 4px 10px; }
+.section-title { font-size: .88rem; font-weight: 800; color: var(--text-dim);
+  letter-spacing: .04em; margin: 1.4rem .25rem .6rem; }
 
 /* ---- 空狀態 ---- */
-.empty { text-align: center; color: var(--text-dim); padding: 54px 20px; }
-.empty .big { font-size: 52px; margin-bottom: 14px; }
-.empty p { font-size: 16px; }
+.empty { text-align: center; color: var(--text-dim); padding: 3.2rem 1.2rem; }
+.empty .big { font-size: 3.2rem; margin-bottom: .8rem; }
+.empty p { font-size: 1.02rem; }
 
 /* ---- 浮動新增鈕 ---- */
 .fab {
-  position: fixed; right: 20px; bottom: calc(var(--safe-bottom) + 22px);
-  width: 64px; height: 64px; border-radius: 50%;
+  position: fixed; right: 1.2rem; bottom: calc(var(--safe-bottom) + 1.3rem);
+  width: 4rem; height: 4rem; border-radius: 50%;
   background: linear-gradient(135deg, #2f8bff, #1f6feb); color: #fff; border: none;
-  font-size: 34px; line-height: 1; cursor: pointer;
+  font-size: 2.1rem; line-height: 1; cursor: pointer;
   box-shadow: 0 8px 22px rgba(31,111,235,.5);
   z-index: 20; display: flex; align-items: center; justify-content: center;
 }
 .fab:active { transform: scale(.92); }
 
 /* ---- 主分頁(清單 / 行程)---- */
-.tabs { display: flex; gap: 6px; background: color-mix(in srgb, var(--text-dim) 12%, transparent);
-  padding: 5px; border-radius: 14px; margin-bottom: 14px; }
+.tabs { display: flex; gap: .35rem; background: color-mix(in srgb, var(--text-dim) 12%, transparent);
+  padding: .3rem; border-radius: 14px; margin-bottom: .9rem; }
 .tab { flex: 1; border: none; background: transparent; color: var(--text-dim);
-  font-size: 16px; font-weight: 700; padding: 10px; border-radius: 10px; cursor: pointer; font-family: inherit; }
+  font-size: 1.02rem; font-weight: 700; padding: .6rem; border-radius: 10px; cursor: pointer; font-family: inherit; }
 .tab.on { background: var(--card); color: var(--accent); box-shadow: var(--shadow); }
 
 /* ---- 每日的日期分頁條 ---- */
-.day-strip { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; margin: 0 -2px;
+.day-strip { display: flex; gap: .5rem; overflow-x: auto; padding: .1rem .1rem .6rem; margin: 0 -.1rem;
   -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .day-strip::-webkit-scrollbar { display: none; }
 .day-pill { flex: none; border: 1.5px solid var(--border); background: var(--card); color: var(--text-dim);
-  font-size: 15px; font-weight: 700; padding: 9px 16px; border-radius: 999px; cursor: pointer; font-family: inherit; }
+  font-size: .98rem; font-weight: 700; padding: .55rem 1rem; border-radius: 999px; cursor: pointer; font-family: inherit; }
 .day-pill.on { color: #fff; border-color: transparent; }
 
 /* 彩色日標題 */
-.day-head { border-radius: 16px; padding: 16px 18px; margin: 4px 0 14px; color: #fff;
-  display: flex; align-items: baseline; gap: 12px; box-shadow: var(--shadow); }
-.day-head .num { font-size: 26px; font-weight: 800; letter-spacing: .02em; }
-.day-head .date { font-size: 16px; font-weight: 600; opacity: .95; }
+.day-head { border-radius: 16px; padding: 1rem 1.1rem; margin: .3rem 0 .9rem; color: #fff;
+  display: flex; align-items: baseline; gap: .8rem; box-shadow: var(--shadow); }
+.day-head .num { font-size: 1.7rem; font-weight: 800; letter-spacing: .02em; }
+.day-head .date { font-size: 1.02rem; font-weight: 600; opacity: .95; }
 
 /* ---- 行程卡片(含上下移)---- */
-.card.itin { display: flex; align-items: center; gap: 12px; }
+.card.itin { display: flex; align-items: center; gap: .7rem; }
 .card.itin .itin-main { flex: 1; min-width: 0; }
-.reorder { display: flex; flex-direction: column; gap: 6px; flex: none; }
-.reorder button { width: 40px; height: 34px; border: 1.5px solid var(--border); background: var(--card);
-  color: var(--text); border-radius: 10px; font-size: 15px; cursor: pointer; }
+.reorder { display: flex; flex-direction: column; gap: .35rem; flex: none; }
+.reorder button { width: 2.5rem; height: 2.1rem; border: 1.5px solid var(--border); background: var(--card);
+  color: var(--text); border-radius: 10px; font-size: .95rem; cursor: pointer; }
 .reorder button:disabled { opacity: .3; }
-.day-empty { color: var(--text-dim); font-size: 15px; padding: 12px 4px 16px; }
-.day-sum { color: var(--text-dim); font-size: 14.5px; font-weight: 600; padding: 4px 4px 12px; }
+.day-empty { color: var(--text-dim); font-size: .98rem; padding: .8rem .25rem 1rem; }
+.day-sum { color: var(--text-dim); font-size: .95rem; font-weight: 600; padding: .25rem .25rem .8rem; }
 .warn { color: #e08600; font-weight: 700; }
 
 /* ---- 交通段(大、可愛的膠囊)---- */
-.leg { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 6px 2px 12px 14px; }
-.leg .km { font-size: 13.5px; font-weight: 700; color: var(--text-dim); margin-right: 2px; }
-.mp { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft);
-  color: var(--accent); font-size: 14px; font-weight: 700; padding: 5px 11px; border-radius: 999px; }
-.mp .ic { font-size: 18px; }
+.leg { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; padding: .4rem .1rem .8rem .9rem; }
+.leg .km { font-size: .85rem; font-weight: 700; color: var(--text-dim); margin-right: .1rem; }
+.mp { display: inline-flex; align-items: center; gap: .3rem; background: var(--accent-soft);
+  color: var(--accent); font-size: .92rem; font-weight: 700; padding: .35rem .7rem; border-radius: 999px; }
+.mp .ic { font-size: 1.2rem; }
 
 /* ---- 住宿錨點 ---- */
 .card.anchor { background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 60%, var(--card)));
-  color: var(--accent); font-weight: 750; font-size: 16px; display: flex; align-items: center; gap: 8px;
+  color: var(--accent); font-weight: 750; font-size: 1.05rem; display: flex; align-items: center; gap: .5rem;
   border: 1.5px solid color-mix(in srgb, var(--accent) 25%, transparent); }
-.anchor-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
-.anchor-day { display: flex; align-items: center; gap: 8px; }
-.anchor-day > span { flex: 1; font-weight: 700; font-size: 16px; }
+.anchor-grid { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1rem; }
+.anchor-day { display: flex; align-items: center; gap: .5rem; }
+.anchor-day > span { flex: 1; font-weight: 700; font-size: 1.05rem; }
 
 /* ---- 底部彈出表單 ---- */
 .sheet-backdrop {
@@ -174,50 +196,50 @@ main { padding: 18px; padding-bottom: calc(var(--safe-bottom) + 100px); max-widt
 }
 .sheet-backdrop.show { opacity: 1; }
 .sheet {
-  background: var(--bg); width: 100%; max-width: 660px;
-  border-radius: 24px 24px 0 0; padding: 8px 18px calc(var(--safe-bottom) + 22px);
+  background: var(--bg); width: 100%; max-width: 680px;
+  border-radius: 24px 24px 0 0; padding: .5rem 1.1rem calc(var(--safe-bottom) + 1.4rem);
   max-height: 92dvh; overflow-y: auto;
   transform: translateY(100%); transition: transform .25s cubic-bezier(.2,.8,.2,1);
 }
 .sheet-backdrop.show .sheet { transform: translateY(0); }
-.sheet .grabber { width: 42px; height: 5px; border-radius: 3px; background: var(--border); margin: 8px auto 14px; }
-.sheet h2 { font-size: 22px; font-weight: 800; margin-bottom: 16px; }
+.sheet .grabber { width: 2.6rem; height: 5px; border-radius: 3px; background: var(--border); margin: .5rem auto .9rem; }
+.sheet h2 { font-size: 1.4rem; font-weight: 800; margin-bottom: 1rem; }
 
 /* ---- 表單元件 ---- */
-label.field { display: block; margin-bottom: 15px; }
-label.field .lab { font-size: 14px; font-weight: 700; color: var(--text-dim); margin-bottom: 7px; display: block; }
+label.field { display: block; margin-bottom: .95rem; }
+label.field .lab { font-size: .9rem; font-weight: 700; color: var(--text-dim); margin-bottom: .45rem; display: block; }
 input, select, textarea {
-  width: 100%; font-size: 16px; /* 16px 避免 iOS 自動放大 */
-  padding: 13px 15px; border: 1.5px solid var(--border); border-radius: 13px;
+  width: 100%; font-size: max(16px, 1rem); /* 至少 16px,避免 iOS 自動放大 */
+  padding: .8rem .95rem; border: 1.5px solid var(--border); border-radius: 13px;
   background: var(--card); color: var(--text); font-family: inherit;
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-textarea { resize: vertical; min-height: 68px; }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+textarea { resize: vertical; min-height: 4.2rem; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
 
-.chips { display: flex; flex-wrap: wrap; gap: 9px; }
+.chips { display: flex; flex-wrap: wrap; gap: .55rem; }
 .chip {
-  padding: 10px 16px; border-radius: 999px; border: 1.5px solid var(--border);
-  background: var(--card); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer;
+  padding: .6rem 1rem; border-radius: 999px; border: 1.5px solid var(--border);
+  background: var(--card); color: var(--text); font-size: .98rem; font-weight: 600; cursor: pointer;
 }
 .chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; gap: 12px; }
-.toggle-row .desc { font-size: 13px; color: var(--text-dim); margin-top: 3px; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: .7rem 0; gap: .7rem; }
+.toggle-row .desc { font-size: .82rem; color: var(--text-dim); margin-top: .15rem; }
 
 /* ---- 按鈕 ---- */
 .btn {
-  width: 100%; padding: 15px; border-radius: 14px; border: none;
-  font-size: 17px; font-weight: 700; cursor: pointer; font-family: inherit;
+  width: 100%; padding: .95rem; border-radius: 14px; border: none;
+  font-size: 1.08rem; font-weight: 700; cursor: pointer; font-family: inherit;
 }
 .btn.primary { background: linear-gradient(135deg, #2f8bff, #1f6feb); color: #fff;
   box-shadow: 0 4px 14px rgba(31,111,235,.35); }
 .btn.ghost { background: transparent; color: var(--text-dim); }
 .btn.danger { background: transparent; color: var(--danger); }
 .btn:active { opacity: .85; }
-.btn-row { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.btn-row { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; }
 
 /* 離線提示條 */
 .offline-bar { background: var(--accent-soft); color: var(--accent);
-  text-align: center; font-size: 14px; font-weight: 600; padding: 7px; display: none; }
+  text-align: center; font-size: .9rem; font-weight: 600; padding: .45rem; display: none; }
 body.offline .offline-bar { display: block; }

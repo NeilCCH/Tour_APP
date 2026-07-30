@@ -70,7 +70,7 @@ async function renderHome() {
     // 每趟旅程附帶地點數量
     const counts = await Promise.all(trips.map((t) => db.listPlaces(t.id).then((p) => p.length)));
     app.innerHTML = trips.map((t, i) => `
-      <div class="card" data-trip="${esc(t.id)}">
+      <div class="card trip" data-trip="${esc(t.id)}" style="--tc:${dayColor(i + 1)}">
         <h3>${esc(t.name)}</h3>
         <div class="meta">${esc(fmtDateRange(t.startDate, t.endDate))} ・ ${t.people} 人 ・ ${counts[i]} 個地點</div>
       </div>`).join('');
@@ -259,12 +259,14 @@ async function renderTrip(trip) {
   const dayCount = tripDayCount(trip, places);
 
   const head = `
-    <div class="card" data-edit-trip style="cursor:default">
-      <div class="meta" style="font-size:15px">
-        📅 ${esc(fmtDateRange(trip.startDate, trip.endDate))}<br>
-        👥 ${trip.people} 人 ・ 📍 ${places.length} 個地點
-        <button class="btn ghost" style="width:auto;padding:6px 0;margin-top:6px" data-edit-trip-btn>編輯旅程資訊</button>
+    <div class="trip-hero">
+      <div class="dates">📅 ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
+      <div class="stats">
+        <div class="stat"><div class="v">${dayCount}</div><div class="l">天</div></div>
+        <div class="stat"><div class="v">${trip.people}</div><div class="l">人</div></div>
+        <div class="stat"><div class="v">${places.length}</div><div class="l">地點</div></div>
       </div>
+      <button class="btn ghost edit" data-edit-trip-btn>編輯旅程資訊</button>
     </div>`;
 
   let body;
