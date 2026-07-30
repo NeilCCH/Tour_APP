@@ -18,14 +18,14 @@ const DB_VERSION = 1;
 const STORES = ['trips', 'places', 'moments'];
 
 // ---- 分類與狀態常數（對應 PRD 二、資料模型）----------------------------------
-export const CATEGORIES = ['景點', '餐廳', '住宿', '交通', '購物', '其他'];
+export const CATEGORIES = ['景點', '美食', '住宿', '交通', '購物', '其他'];
 
 // Place 狀態：候選 / 已排入 / 已造訪 / 已造訪・未規劃
 export const STATUSES = ['候選', '已排入', '已造訪', '已造訪・未規劃'];
 
 // 各類別的預設停留分鐘（PRD：estimated_stay 各類別給預設值）
 export const DEFAULT_STAY = {
-  景點: 90, 餐廳: 60, 住宿: 0, 交通: 30, 購物: 60, 其他: 45,
+  景點: 90, 美食: 60, 住宿: 0, 交通: 30, 購物: 60, 其他: 45,
 };
 
 // ---- 底層：開啟資料庫、把 request 包成 Promise --------------------------------
@@ -171,6 +171,21 @@ async function deletePlace(id) {
   notify();
 }
 
+// ---- 一次性資料轉換 --------------------------------------------------------
+// 舊資料把分類「餐廳」改名為「美食」。可重複執行(改完就沒有符合的,等於空跑)。
+async function migrateCategories() {
+  const places = await getAll('places');
+  let changed = 0;
+  for (const p of places) {
+    if (p.category === '餐廳') {
+      await put('places', { ...p, category: '美食', updatedAt: Date.now() });
+      changed++;
+    }
+  }
+  if (changed) notify();
+  return changed;
+}
+
 // ---- 給 sync.js 用的原始存取（含 tombstone，不改動 updatedAt）----------------
 const sync = {
   stores: STORES,
@@ -182,5 +197,6 @@ const sync = {
 export const db = {
   createTrip, listTrips, getTrip, updateTrip, deleteTrip,
   createPlace, listPlaces, getPlace, updatePlace, deletePlace,
+  migrateCategories,
   _sync: sync,
 };

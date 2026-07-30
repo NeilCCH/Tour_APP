@@ -780,7 +780,7 @@ function openAuthSheet() {
 // ---- 啟動 ------------------------------------------------------------------
 window.addEventListener('hashchange', render);
 header.querySelector('.back').addEventListener('click', () => { location.hash = ''; });
-render();
+db.migrateCategories().catch(() => {}).finally(render); // 舊資料「餐廳」→「美食」後再繪製
 initCloud();
 
 // 註冊 Service Worker（讓 App 可離線、可加入主畫面）
