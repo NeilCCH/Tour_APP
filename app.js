@@ -44,8 +44,8 @@ function ic(name) {
 }
 
 // ---- 顏色:交通模式、地點分類各給一色(淺色塊)------------------------------
-const MODE_COLORS = { walk: '#16a34a', bus: '#ea580c', metro: '#7c3aed', car: '#2563eb' };
-const CATEGORY_COLORS = { 景點: '#16a34a', 美食: '#ea580c', 住宿: '#7c3aed', 交通: '#2563eb', 購物: '#db2777', 其他: '#64748b' };
+const MODE_COLORS = { walk: '#22b34a', bus: '#f97316', metro: '#8b5cf6', car: '#3b82f6' };
+const CATEGORY_COLORS = { 景點: '#22b34a', 美食: '#f97316', 住宿: '#8b5cf6', 交通: '#3b82f6', 購物: '#ec4899', 其他: '#94a3b8' };
 const catTag = (c) => `<span class="tag cat" style="--c:${CATEGORY_COLORS[c] || '#64748b'}">${esc(c)}</span>`;
 
 function fmtDateRange(a, b) {
@@ -209,7 +209,7 @@ function anchorRow(role, p) {
 }
 
 // 每一天的代表色(讓每日視覺辨識更明顯)
-const DAY_COLORS = ['#2f6fe0', '#0e9488', '#8b5cf6', '#e11d76', '#ea6a0a', '#16a34a', '#0891b2', '#c026d3', '#d97706', '#4f46e5'];
+const DAY_COLORS = ['#3b82f6', '#14b8a6', '#8b5cf6', '#ec4899', '#f97316', '#22b34a', '#06b6d4', '#a855f7', '#f59e0b', '#6366f1'];
 const dayColor = (d) => DAY_COLORS[(d - 1) % DAY_COLORS.length];
 function shade(hex) { // 把顏色調暗一點,給漸層用
   const n = parseInt(hex.slice(1), 16);
@@ -266,7 +266,7 @@ function planBody(trip, places, dayCount) {
   const day = planDay;
   const color = dayColor(day);
   const date = datesFixed ? dayDateLabel(trip.startDate, day) : '未設定日期';
-  body += `<div class="day-head" style="background:linear-gradient(135deg, ${color}, ${shade(color)})">
+  body += `<div class="day-head" style="--dc:${color}">
     <span class="num">Day ${day}</span><span class="date">${date}</span></div>`;
 
   // 第一天不放「出發飯店」,最後一天不放「回程飯店」
@@ -307,9 +307,9 @@ async function renderTrip(trip) {
     <div class="trip-hero">
       <div class="dates">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
       <div class="stats">
-        <div class="stat" style="--c:#2563eb"><div class="v">${dayCount}</div><div class="l">天</div></div>
-        <div class="stat" style="--c:#0e9488"><div class="v">${trip.people}</div><div class="l">人</div></div>
-        <div class="stat" style="--c:#7c3aed"><div class="v">${places.length}</div><div class="l">地點</div></div>
+        <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
+        <div class="stat" style="--c:#14b8a6"><div class="v">${trip.people}</div><div class="l">人</div></div>
+        <div class="stat" style="--c:#8b5cf6"><div class="v">${places.length}</div><div class="l">地點</div></div>
       </div>
       <button class="btn ghost edit" data-edit-trip-btn>編輯旅程資訊</button>
     </div>`;
