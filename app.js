@@ -43,6 +43,11 @@ function ic(name) {
   return `<span class="ic"><svg viewBox="0 0 24 24" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg></span>`;
 }
 
+// ---- 顏色:交通模式、地點分類各給一色(淺色塊)------------------------------
+const MODE_COLORS = { walk: '#16a34a', bus: '#ea580c', metro: '#7c3aed', car: '#2563eb' };
+const CATEGORY_COLORS = { 景點: '#16a34a', 美食: '#ea580c', 住宿: '#7c3aed', 交通: '#2563eb', 購物: '#db2777', 其他: '#64748b' };
+const catTag = (c) => `<span class="tag cat" style="--c:${CATEGORY_COLORS[c] || '#64748b'}">${esc(c)}</span>`;
+
 function fmtDateRange(a, b) {
   if (!a && !b) return '尚未設定日期';
   if (a && b) return `${a} → ${b}`;
@@ -153,7 +158,7 @@ function listBody(places) {
       return `
         <div class="card" data-place="${esc(p.id)}">
           <h3>${p.pinned ? `<span class="pin-badge">${ic('pushpin')}</span>` : ''}${esc(p.name)}
-            <span class="tag cat">${esc(p.category)}</span></h3>
+            ${catTag(p.category)}</h3>
           ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
           ${p.notes ? `<div class="meta">${esc(p.notes)}</div>` : ''}
         </div>`;
@@ -178,7 +183,7 @@ function legHtml(a, b) {
   if (!(hasCoord(a) && hasCoord(b))) return '';
   const { km, modes } = legModes(a, b);
   const kmTxt = km < 1 ? '<1 km' : `${km.toFixed(1)} km`;
-  const pills = modes.map((m) => `<span class="mp">${ic(m.key)}${fmtTime(m.minutes)}</span>`).join('');
+  const pills = modes.map((m) => `<span class="mp" style="--c:${MODE_COLORS[m.key] || '#1f6feb'}">${ic(m.key)}${fmtTime(m.minutes)}</span>`).join('');
   return `<div class="leg"><span class="km">${ic('pin')} ${kmTxt}</span>${pills}</div>`;
 }
 
@@ -188,7 +193,7 @@ function sightCard(p, i, n) {
     <div class="card itin" data-move="${esc(p.id)}">
       <div class="itin-main">
         <h3>${p.pinned ? `<span class="pin-badge">${ic('pushpin')}</span>` : ''}${esc(p.name)}
-          <span class="tag cat">${esc(p.category)}</span></h3>
+          ${catTag(p.category)}</h3>
         ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
       </div>
       <div class="reorder">
@@ -218,7 +223,7 @@ function poolCard(p) {
   return `
     <div class="card" data-move="${esc(p.id)}">
       <h3>${p.pinned ? `<span class="pin-badge">${ic('pushpin')}</span>` : ''}${esc(p.name)}
-        <span class="tag cat">${esc(p.category)}</span></h3>
+        ${catTag(p.category)}</h3>
       <div class="meta">${hint}</div>
     </div>`;
 }
@@ -302,9 +307,9 @@ async function renderTrip(trip) {
     <div class="trip-hero">
       <div class="dates">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
       <div class="stats">
-        <div class="stat"><div class="v">${dayCount}</div><div class="l">天</div></div>
-        <div class="stat"><div class="v">${trip.people}</div><div class="l">人</div></div>
-        <div class="stat"><div class="v">${places.length}</div><div class="l">地點</div></div>
+        <div class="stat" style="--c:#2563eb"><div class="v">${dayCount}</div><div class="l">天</div></div>
+        <div class="stat" style="--c:#0e9488"><div class="v">${trip.people}</div><div class="l">人</div></div>
+        <div class="stat" style="--c:#7c3aed"><div class="v">${places.length}</div><div class="l">地點</div></div>
       </div>
       <button class="btn ghost edit" data-edit-trip-btn>編輯旅程資訊</button>
     </div>`;

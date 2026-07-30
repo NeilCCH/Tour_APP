@@ -104,9 +104,9 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
 .trip-hero .dates { font-size: 1.05rem; font-weight: 700; color: var(--accent);
   margin-bottom: .9rem; display: flex; align-items: center; gap: .4rem; }
 .trip-hero .stats { display: flex; gap: .6rem; }
-.stat { flex: 1; background: color-mix(in srgb, var(--accent) 9%, var(--card));
+.stat { flex: 1; background: color-mix(in srgb, var(--c, var(--accent)) 11%, var(--card));
   border-radius: 14px; padding: .8rem .5rem; text-align: center; }
-.stat .v { font-size: 1.8rem; font-weight: 800; color: var(--accent); line-height: 1.05; }
+.stat .v { font-size: 1.8rem; font-weight: 800; color: var(--c, var(--accent)); line-height: 1.05; }
 .stat .l { font-size: .88rem; font-weight: 600; color: var(--text-dim); margin-top: .15rem; }
 .trip-hero .edit { width: auto; padding: .5rem 0; margin-top: .8rem; font-size: .95rem; }
 
@@ -116,7 +116,7 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
   padding: .18rem .6rem; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent);
 }
-.tag.cat { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text-dim); }
+.tag.cat { background: color-mix(in srgb, var(--c, var(--text-dim)) 16%, var(--card)); color: var(--c, var(--text-dim)); }
 .pin-badge { font-size: .95rem; }
 
 .dot { width: .55rem; height: .55rem; border-radius: 50%; display: inline-block; flex: none; }
@@ -189,8 +189,9 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
 /* ---- 交通段(大、可愛的膠囊)---- */
 .leg { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; padding: .4rem .1rem .8rem .9rem; }
 .leg .km { font-size: .85rem; font-weight: 700; color: var(--text-dim); margin-right: .1rem; }
-.mp { display: inline-flex; align-items: center; gap: .3rem; background: var(--accent-soft);
-  color: var(--accent); font-size: .92rem; font-weight: 700; padding: .35rem .7rem; border-radius: 999px; }
+.mp { display: inline-flex; align-items: center; gap: .3rem;
+  background: color-mix(in srgb, var(--c, var(--accent)) 15%, var(--card));
+  color: var(--c, var(--accent)); font-size: .92rem; font-weight: 700; padding: .35rem .7rem; border-radius: 999px; }
 .mp .ic { font-size: 1.2rem; }
 
 /* ---- 住宿錨點 ---- */
