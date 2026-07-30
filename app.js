@@ -140,13 +140,13 @@ function anchorIdSet(trip) {
   return s;
 }
 
-// 兩點之間的多模式交通估時（兩點都已定位才顯示）
+// 兩點之間的多模式交通估時（大、可愛的膠囊;兩點都已定位才顯示）
 function legHtml(a, b) {
   if (!(hasCoord(a) && hasCoord(b))) return '';
   const { km, modes } = legModes(a, b);
-  const kmTxt = km < 1 ? '<1 公里' : `約 ${km.toFixed(1)} 公里`;
-  const ms = modes.map((m) => `${m.icon}${m.minutes}`).join(' ');
-  return `<div class="leg">↓ ${kmTxt} ｜ ${ms} 分（估）</div>`;
+  const kmTxt = km < 1 ? '<1 km' : `${km.toFixed(1)} km`;
+  const pills = modes.map((m) => `<span class="mp"><span class="ic">${m.icon}</span>${m.minutes}分</span>`).join('');
+  return `<div class="leg"><span class="km">🚩 ${kmTxt}</span>${pills}</div>`;
 }
 
 function sightCard(p, i, n) {
@@ -170,58 +170,85 @@ function anchorRow(role, p) {
   return `<div class="card anchor" data-move="${esc(p.id)}">🏨 ${role}・${esc(p.name)}${warn}</div>`;
 }
 
-// 「行程」分頁:每天 出發點 → 景點(就近) → 回程點,底下候選池
+// 每一天的代表色(讓每日視覺辨識更明顯)
+const DAY_COLORS = ['#2f6fe0', '#0e9488', '#8b5cf6', '#e11d76', '#ea6a0a', '#16a34a', '#0891b2', '#c026d3', '#d97706', '#4f46e5'];
+const dayColor = (d) => DAY_COLORS[(d - 1) % DAY_COLORS.length];
+function shade(hex) { // 把顏色調暗一點,給漸層用
+  const n = parseInt(hex.slice(1), 16);
+  const f = 0.72;
+  return `rgb(${Math.round(((n >> 16) & 255) * f)},${Math.round(((n >> 8) & 255) * f)},${Math.round((n & 255) * f)})`;
+}
+let planDay = 1; // 「行程」分頁目前看哪一天(數字) 或 'pool'
+
+function poolCard(p) {
+  const hint = p.category === '住宿' ? '點一下 → 設為某天的出發/回程點' : '點一下 → 排進某一天';
+  return `
+    <div class="card" data-move="${esc(p.id)}">
+      <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+        <span class="tag cat">${esc(p.category)}</span></h3>
+      <div class="meta">${hint}</div>
+    </div>`;
+}
+
+// 「行程」分頁:上面日期分頁條,下面顯示選中那一天(每天 出發→景點→回程)
 function planBody(trip, places, dayCount) {
   const datesFixed = !!(trip.startDate && trip.endDate);
   const byId = new Map(places.map((p) => [p.id, p]));
   const anchors = anchorIdSet(trip);
-  let body = `<button class="btn primary" id="suggest" style="margin-bottom:12px">✨ 建議安排</button>`;
+  if (planDay !== 'pool' && planDay > dayCount) planDay = 1;
 
-  for (let day = 1; day <= dayCount; day++) {
-    const startP = trip.dayStart?.[day] ? byId.get(trip.dayStart[day]) : null;
-    const endP = trip.dayEnd?.[day] ? byId.get(trip.dayEnd[day]) : null;
-    const sights = places.filter((p) => p.assignedDay === day && !anchors.has(p.id))
-      .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
-    const date = datesFixed ? ` ・ ${dayDateLabel(trip.startDate, day)}` : '';
-    body += `<div class="section-title">Day ${day}${date}</div>`;
+  let body = `<button class="btn primary" id="suggest" style="margin-bottom:14px">✨ 建議安排</button>`;
 
-    const chain = [];
-    if (startP) chain.push(['出發', startP]);
-    sights.forEach((p) => chain.push(['sight', p]));
-    if (endP) chain.push(['回程', endP]);
-
-    if (chain.length === 0) {
-      body += `<div class="day-empty">尚未安排 — 從下方候選池點地點排進來</div>`;
-    } else {
-      chain.forEach(([kind, p], idx) => {
-        if (idx > 0) body += legHtml(chain[idx - 1][1], p);
-        if (kind === 'sight') body += sightCard(p, sights.indexOf(p), sights.length);
-        else body += anchorRow(kind, p);
-      });
-      if (sights.length) {
-        const stay = sights.reduce((s, p) => s + (p.estimatedStay || 0), 0);
-        const cost = sights.reduce((s, p) => s + (p.estimatedCost || 0), 0);
-        const full = stay > 600 ? ' ・ <span class="warn">這天有點滿</span>' : '';
-        body += `<div class="day-sum">共 ${sights.length} 站 ・ ⏱ ${stayText(stay) || '0 分'} ・ 💰 ${cost}${full}</div>`;
-      }
-    }
-  }
-  if (!datesFixed) body += `<button class="btn ghost" id="add-day" style="margin:4px 0 8px">＋ 加一天</button>`;
-
+  // 日期分頁條
   const pool = places.filter((p) => !p.assignedDay && !anchors.has(p.id)).sort((a, b) => a.createdAt - b.createdAt);
-  body += `<div class="section-title">候選池（${pool.length}）</div>`;
-  if (pool.length === 0) {
-    body += `<div class="day-empty">沒有待排的地點</div>`;
+  body += `<div class="day-strip">`;
+  for (let d = 1; d <= dayCount; d++) {
+    const on = planDay === d;
+    body += `<button class="day-pill ${on ? 'on' : ''}" data-day="${d}" ${on ? `style="background:${dayColor(d)}"` : ''}>Day ${d}</button>`;
+  }
+  if (!datesFixed) body += `<button class="day-pill" id="add-day">＋</button>`;
+  body += `<button class="day-pill ${planDay === 'pool' ? 'on' : ''}" data-day="pool" ${planDay === 'pool' ? 'style="background:#64748b"' : ''}>候選 ${pool.length}</button>`;
+  body += `</div>`;
+
+  // 候選池
+  if (planDay === 'pool') {
+    if (pool.length === 0) body += `<div class="day-empty">沒有待排的地點。到「清單」按右下 ＋ 新增。</div>`;
+    else body += pool.map(poolCard).join('');
+    return body;
+  }
+
+  // 某一天
+  const day = planDay;
+  const color = dayColor(day);
+  const date = datesFixed ? dayDateLabel(trip.startDate, day) : '未設定日期';
+  body += `<div class="day-head" style="background:linear-gradient(135deg, ${color}, ${shade(color)})">
+    <span class="num">Day ${day}</span><span class="date">${date}</span></div>`;
+
+  // 第一天不放「出發飯店」,最後一天不放「回程飯店」
+  const startP = (day > 1 && trip.dayStart?.[day]) ? byId.get(trip.dayStart[day]) : null;
+  const endP = (day < dayCount && trip.dayEnd?.[day]) ? byId.get(trip.dayEnd[day]) : null;
+  const sights = places.filter((p) => p.assignedDay === day && !anchors.has(p.id))
+    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+
+  const chain = [];
+  if (startP) chain.push(['出發', startP]);
+  sights.forEach((p) => chain.push(['sight', p]));
+  if (endP) chain.push(['回程', endP]);
+
+  if (chain.length === 0) {
+    body += `<div class="day-empty">這天還沒安排 — 切到「候選」把地點排進來。</div>`;
   } else {
-    body += pool.map((p) => {
-      const hint = p.category === '住宿' ? '點一下 → 設為某天的出發/回程點' : '點一下 → 排進某一天';
-      return `
-        <div class="card" data-move="${esc(p.id)}">
-          <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
-            <span class="tag cat">${esc(p.category)}</span></h3>
-          <div class="meta">${hint}</div>
-        </div>`;
-    }).join('');
+    chain.forEach(([kind, p], idx) => {
+      if (idx > 0) body += legHtml(chain[idx - 1][1], p);
+      if (kind === 'sight') body += sightCard(p, sights.indexOf(p), sights.length);
+      else body += anchorRow(kind, p);
+    });
+    if (sights.length) {
+      const stay = sights.reduce((s, p) => s + (p.estimatedStay || 0), 0);
+      const cost = sights.reduce((s, p) => s + (p.estimatedCost || 0), 0);
+      const full = stay > 600 ? ' ・ <span class="warn">這天有點滿</span>' : '';
+      body += `<div class="day-sum">共 ${sights.length} 站 ・ ⏱ ${stayText(stay) || '0 分'} ・ 💰 ${cost}${full}</div>`;
+    }
   }
   return body;
 }
@@ -283,8 +310,13 @@ async function renderTrip(trip) {
   app.querySelectorAll('[data-down]').forEach((b) => b.addEventListener('click', (e) => {
     e.stopPropagation(); reorder(places, places.find((x) => x.id === b.dataset.down), 1);
   }));
+  // 日期分頁切換
+  app.querySelectorAll('.day-pill[data-day]').forEach((b) => b.addEventListener('click', () => {
+    planDay = b.dataset.day === 'pool' ? 'pool' : Number(b.dataset.day);
+    render();
+  }));
   app.querySelector('#add-day')?.addEventListener('click', async () => {
-    await db.updateTrip(trip.id, { dayCount: dayCount + 1 }); render();
+    await db.updateTrip(trip.id, { dayCount: dayCount + 1 }); planDay = dayCount + 1; render();
   });
   app.querySelector('#suggest')?.addEventListener('click', () => suggestArrange(trip, places, dayCount));
 
@@ -429,9 +461,14 @@ function openAnchorSheet(trip, place, dayCount) {
   const gridHtml = () => {
     let r = '';
     for (let d = 1; d <= dayCount; d++) {
-      r += `<div class="anchor-day"><span>Day ${d}</span>
-        <button class="chip ${dayStart[d] === place.id ? 'on' : ''}" data-role="start" data-day="${d}">出發</button>
-        <button class="chip ${dayEnd[d] === place.id ? 'on' : ''}" data-role="end" data-day="${d}">回程</button></div>`;
+      // 第一天不需要出發飯店,最後一天不需要回程飯店
+      const startBtn = d > 1
+        ? `<button class="chip ${dayStart[d] === place.id ? 'on' : ''}" data-role="start" data-day="${d}">出發</button>`
+        : '<span style="width:72px"></span>';
+      const endBtn = d < dayCount
+        ? `<button class="chip ${dayEnd[d] === place.id ? 'on' : ''}" data-role="end" data-day="${d}">回程</button>`
+        : '<span style="width:72px"></span>';
+      r += `<div class="anchor-day"><span>Day ${d}</span>${startBtn}${endBtn}</div>`;
     }
     return r;
   };
