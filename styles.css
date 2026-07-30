@@ -148,6 +148,15 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
   font-size: 1.02rem; font-weight: 700; padding: .6rem; border-radius: 10px; cursor: pointer; font-family: inherit; }
 .tab.on { background: var(--card); color: var(--accent); box-shadow: var(--shadow); }
 
+/* ---- 時間單位切換(分/時)---- */
+.unit-row { display: flex; align-items: center; justify-content: flex-end; gap: .5rem;
+  font-size: .9rem; font-weight: 600; color: var(--text-dim); margin-bottom: .7rem; }
+.seg { display: inline-flex; background: color-mix(in srgb, var(--text-dim) 12%, transparent);
+  border-radius: 999px; padding: .2rem; }
+.seg-btn { border: none; background: transparent; color: var(--text-dim); font-family: inherit;
+  font-size: .92rem; font-weight: 700; padding: .3rem .8rem; border-radius: 999px; cursor: pointer; }
+.seg-btn.on { background: var(--card); color: var(--accent); box-shadow: var(--shadow); }
+
 /* ---- 每日的日期分頁條 ---- */
 .day-strip { display: flex; gap: .5rem; overflow-x: auto; padding: .1rem .1rem .6rem; margin: 0 -.1rem;
   -webkit-overflow-scrolling: touch; scrollbar-width: none; }

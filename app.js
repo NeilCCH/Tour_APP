@@ -31,6 +31,15 @@ function stayText(min) {
   return h ? `${h} 小時${m ? ` ${m} 分` : ''}` : `${m} 分`;
 }
 
+// 時間顯示單位（'min' 只用分 / 'hr' 滿 60 分改用小時,例如 90 分→1.5 小時）
+let timeUnit = localStorage.getItem('timeUnit') || 'hr';
+function fmtTime(min) {
+  if (!min) return '0 分';
+  if (timeUnit === 'min' || min < 60) return `${min} 分`;
+  const h = min / 60;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} 小時`;
+}
+
 function setHeader(title, showBack) {
   header.classList.toggle('has-back', !!showBack);
   header.querySelector('h1').textContent = title;
@@ -102,7 +111,7 @@ function dayDateLabel(startDate, day) {
 
 function placeMetaBits(p) {
   const bits = [];
-  const st = stayText(p.estimatedStay); if (st) bits.push(`⏱ ${st}`);
+  if (p.estimatedStay) bits.push(`⏱ ${fmtTime(p.estimatedStay)}`);
   if (p.estimatedCost) bits.push(`💰 ${p.estimatedCost}`);
   return bits;
 }
@@ -145,7 +154,7 @@ function legHtml(a, b) {
   if (!(hasCoord(a) && hasCoord(b))) return '';
   const { km, modes } = legModes(a, b);
   const kmTxt = km < 1 ? '<1 km' : `${km.toFixed(1)} km`;
-  const pills = modes.map((m) => `<span class="mp"><span class="ic">${m.icon}</span>${m.minutes}分</span>`).join('');
+  const pills = modes.map((m) => `<span class="mp"><span class="ic">${m.icon}</span>${fmtTime(m.minutes)}</span>`).join('');
   return `<div class="leg"><span class="km">🚩 ${kmTxt}</span>${pills}</div>`;
 }
 
@@ -197,7 +206,14 @@ function planBody(trip, places, dayCount) {
   const anchors = anchorIdSet(trip);
   if (planDay !== 'pool' && planDay > dayCount) planDay = 1;
 
-  let body = `<button class="btn primary" id="suggest" style="margin-bottom:14px">✨ 建議安排</button>`;
+  let body = `<button class="btn primary" id="suggest" style="margin-bottom:12px">✨ 建議安排</button>`;
+
+  // 時間單位切換（分 / 時）
+  body += `<div class="unit-row">時間顯示
+    <span class="seg">
+      <button class="seg-btn ${timeUnit === 'min' ? 'on' : ''}" data-unit="min">分</button>
+      <button class="seg-btn ${timeUnit === 'hr' ? 'on' : ''}" data-unit="hr">時</button>
+    </span></div>`;
 
   // 日期分頁條
   const pool = places.filter((p) => !p.assignedDay && !anchors.has(p.id)).sort((a, b) => a.createdAt - b.createdAt);
@@ -247,7 +263,7 @@ function planBody(trip, places, dayCount) {
       const stay = sights.reduce((s, p) => s + (p.estimatedStay || 0), 0);
       const cost = sights.reduce((s, p) => s + (p.estimatedCost || 0), 0);
       const full = stay > 600 ? ' ・ <span class="warn">這天有點滿</span>' : '';
-      body += `<div class="day-sum">共 ${sights.length} 站 ・ ⏱ ${stayText(stay) || '0 分'} ・ 💰 ${cost}${full}</div>`;
+      body += `<div class="day-sum">共 ${sights.length} 站 ・ ⏱ ${fmtTime(stay)} ・ 💰 ${cost}${full}</div>`;
     }
   }
   return body;
@@ -311,6 +327,10 @@ async function renderTrip(trip) {
   }));
   app.querySelectorAll('[data-down]').forEach((b) => b.addEventListener('click', (e) => {
     e.stopPropagation(); reorder(places, places.find((x) => x.id === b.dataset.down), 1);
+  }));
+  // 時間單位切換
+  app.querySelectorAll('[data-unit]').forEach((b) => b.addEventListener('click', () => {
+    timeUnit = b.dataset.unit; localStorage.setItem('timeUnit', timeUnit); render();
   }));
   // 日期分頁切換
   app.querySelectorAll('.day-pill[data-day]').forEach((b) => b.addEventListener('click', () => {
