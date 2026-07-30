@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
+import { geocode, legEstimate, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
 const app = document.getElementById('app');
 const header = document.getElementById('header');
@@ -131,7 +132,7 @@ function listBody(places) {
 // 「行程」分頁:依天數排,底下是候選池
 function planBody(trip, places, dayCount) {
   const datesFixed = !!(trip.startDate && trip.endDate);
-  let body = '';
+  let body = `<button class="btn primary" id="suggest" style="margin-bottom:12px">✨ 建議安排（依距離分天＋排順序）</button>`;
   for (let day = 1; day <= dayCount; day++) {
     const group = places.filter((p) => p.assignedDay === day)
       .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
@@ -142,7 +143,7 @@ function planBody(trip, places, dayCount) {
     } else {
       body += group.map((p, i) => {
         const bits = placeMetaBits(p);
-        return `
+        const card = `
           <div class="card itin" data-move="${esc(p.id)}">
             <div class="itin-main">
               <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
@@ -154,6 +155,15 @@ function planBody(trip, places, dayCount) {
               <button data-down="${esc(p.id)}" ${i === group.length - 1 ? 'disabled' : ''}>▼</button>
             </div>
           </div>`;
+        // 兩站之間的距離與估計交通時間（兩點都已定位才顯示）
+        const nx = group[i + 1];
+        let leg = '';
+        if (nx && p.lat != null && p.lng != null && nx.lat != null && nx.lng != null) {
+          const e = legEstimate(p, nx);
+          const kmTxt = e.km < 1 ? '<1 公里' : `約 ${e.km.toFixed(1)} 公里`;
+          leg = `<div class="leg">↓ ${kmTxt} ・ ${e.mode}約 ${e.minutes} 分（估）</div>`;
+        }
+        return card + leg;
       }).join('');
       const stay = group.reduce((s, p) => s + (p.estimatedStay || 0), 0);
       const cost = group.reduce((s, p) => s + (p.estimatedCost || 0), 0);
@@ -238,8 +248,37 @@ async function renderTrip(trip) {
   app.querySelector('#add-day')?.addEventListener('click', async () => {
     await db.updateTrip(trip.id, { dayCount: dayCount + 1 }); render();
   });
+  app.querySelector('#suggest')?.addEventListener('click', () => suggestArrange(trip, places, dayCount));
 
   setFab(() => openPlaceSheet(trip.id));
+}
+
+// 建議安排:把「已定位」的地點依距離分成 dayCount 天,每天就近排序（PRD 4.2）
+async function suggestArrange(trip, places, dayCount) {
+  const located = places.filter((p) => p.lat != null && p.lng != null);
+  const missing = places.length - located.length;
+  if (located.length < 2) {
+    alert('至少要有 2 個「已定位」的地點才能建議安排。\n請先打開地點、按「📍 用名稱定位」。');
+    return;
+  }
+  const msg = `會把 ${located.length} 個已定位的地點,依距離重新分成 ${dayCount} 天並排出順序。`
+    + (missing ? `\n（有 ${missing} 個還沒定位的地點不會被移動）` : '')
+    + '\n\n要套用嗎?（套用後仍可手動微調）';
+  if (!confirm(msg)) return;
+
+  const clusters = orderClusters(kmeansDays(
+    located.map((p) => ({ id: p.id, lat: p.lat, lng: p.lng })), dayCount));
+  const byId = new Map(places.map((p) => [p.id, p]));
+  for (let d = 0; d < clusters.length; d++) {
+    const ordered = nearestOrder(clusters[d]);
+    for (let i = 0; i < ordered.length; i++) {
+      const place = byId.get(ordered[i].id);
+      const patch = { assignedDay: d + 1, orderIndex: i + 1 };
+      if (place.status === '候選') patch.status = '已排入';
+      await db.updatePlace(ordered[i].id, patch);
+    }
+  }
+  render();
 }
 
 // ---- 排程操作 --------------------------------------------------------------
@@ -385,6 +424,12 @@ function openPlaceSheet(tripId, place = null) {
     <label class="field"><span class="lab">地點名稱</span>
       <input id="f-name" placeholder="例如：清水寺" value="${esc(place?.name || '')}"></label>
 
+    <label class="field"><span class="lab">位置（給「建議安排」用）</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" class="chip" id="f-locate">📍 用名稱定位</button>
+        <span class="meta" id="f-loc" style="flex:1;min-width:0"></span>
+      </div></label>
+
     <label class="field"><span class="lab">分類</span>
       <div class="chips" id="f-cat">
         ${CATEGORIES.map((c) => `<div class="chip ${c === cat ? 'on' : ''}" data-v="${esc(c)}">${esc(c)}</div>`).join('')}
@@ -434,6 +479,22 @@ function openPlaceSheet(tripId, place = null) {
     };
     bindSingle('#f-cat'); bindSingle('#f-status');
 
+    // 定位（用名稱查座標,給「建議安排」用）
+    let coords = (place && place.lat != null && place.lng != null) ? { lat: place.lat, lng: place.lng } : null;
+    const locEl = sheet.querySelector('#f-loc');
+    if (coords) locEl.textContent = `已定位 ✓ (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
+    sheet.querySelector('#f-locate').onclick = async () => {
+      const q = sheet.querySelector('#f-name').value.trim();
+      if (!q) { locEl.textContent = '請先輸入地點名稱'; return; }
+      locEl.textContent = '查詢中…（免費服務,約 1 秒）';
+      try {
+        const r = await geocode(q);
+        if (!r) { coords = null; locEl.textContent = '找不到,試更完整的名稱(例如「清水寺 京都」)'; return; }
+        coords = { lat: r.lat, lng: r.lng };
+        locEl.textContent = '已定位 ✓ ' + r.label.split(',').slice(0, 3).join(',');
+      } catch (e) { locEl.textContent = '定位失敗:' + (e.message || e); }
+    };
+
     // 釘選開關
     const pinChip = sheet.querySelector('#f-pin');
     let pinned = !!place?.pinned;
@@ -459,6 +520,8 @@ function openPlaceSheet(tripId, place = null) {
         referenceUrl: sheet.querySelector('#f-url').value.trim(),
         notes: sheet.querySelector('#f-notes').value.trim(),
         pinned,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
       };
       if (editing) await db.updatePlace(place.id, data);
       else await db.createPlace(tripId, data);

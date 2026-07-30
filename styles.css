@@ -114,6 +114,7 @@ main { padding: 16px; padding-bottom: calc(var(--safe-bottom) + 96px); max-width
 .reorder button:disabled { opacity: .3; }
 .day-empty { color: var(--text-dim); font-size: 14px; padding: 10px 4px 14px; }
 .day-sum { color: var(--text-dim); font-size: 13px; padding: 2px 4px 10px; }
+.leg { color: var(--text-dim); font-size: 12px; padding: 1px 0 7px 10px; }
 .warn { color: #d97706; font-weight: 600; }
 
 /* ---- 空狀態 ---- */
