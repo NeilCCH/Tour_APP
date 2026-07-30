@@ -53,3 +53,20 @@ create policy "own moments" on public.moments for all using (auth.uid() = user_i
 grant all on public.trips   to authenticated;
 grant all on public.places  to authenticated;
 grant all on public.moments to authenticated;
+
+-- ===========================================================================
+-- 公開分享(唯讀):允許「未登入的人」讀取被標為 public 的資料。
+-- 開啟某趟「公開分享」時,App 會把該趟與其地點的 data.public 設為 true;
+-- 下面的規則讓匿名者只能讀到這些被公開的列,其餘一律讀不到。
+-- ===========================================================================
+grant select on public.trips   to anon;
+grant select on public.places  to anon;
+grant select on public.moments to anon;
+
+drop policy if exists "public read trips"   on public.trips;
+drop policy if exists "public read places"  on public.places;
+drop policy if exists "public read moments" on public.moments;
+
+create policy "public read trips"   on public.trips   for select using ((data->>'public')::boolean is true);
+create policy "public read places"  on public.places  for select using ((data->>'public')::boolean is true);
+create policy "public read moments" on public.moments for select using ((data->>'public')::boolean is true);

@@ -97,7 +97,7 @@ async function createTrip({ name, startDate = '', endDate = '', people = 1, owne
     id: newId(), name: (name || '未命名旅程').trim(),
     startDate, endDate, people: Number(people) || 1,
     ownerId,                        // 這趟的擁有者(登入者 id);列表依此過濾
-    isPublic: false,                // 是否開放公開分享
+    public: false,                  // 是否開放公開分享(唯讀)
     createdAt: now, updatedAt: now, deleted: false,
   };
   await put('trips', trip); notify(); return trip;
@@ -152,7 +152,26 @@ async function createPlace(tripId, data) {
     providerIds: data.providerIds || {},
     createdAt: now, updatedAt: now, deleted: false,
   };
+  // 若這趟已開放公開分享,新地點也沿用公開狀態(才會出現在分享頁)
+  const parent = await get('trips', tripId);
+  place.public = !!parent?.public;
   await put('places', place); notify(); return place;
+}
+
+// 設定/取消整趟公開分享:連同底下地點、Moment 一起標記(供權限判斷)
+async function setTripPublic(tripId, isPublic) {
+  const now = Date.now();
+  const flag = !!isPublic;
+  const trip = await get('trips', tripId);
+  if (!trip) return;
+  await put('trips', { ...trip, public: flag, updatedAt: now });
+  const places = await getByIndex('places', 'tripId', tripId);
+  for (const p of places) {
+    await put('places', { ...p, public: flag, updatedAt: now });
+    const moments = await getByIndex('moments', 'placeId', p.id);
+    for (const m of moments) await put('moments', { ...m, public: flag, updatedAt: now });
+  }
+  notify();
 }
 async function listPlaces(tripId) {
   return active(await getByIndex('places', 'tripId', tripId)).sort((a, b) => a.createdAt - b.createdAt);
@@ -200,7 +219,7 @@ const sync = {
 
 // ---- 對外 API --------------------------------------------------------------
 export const db = {
-  createTrip, listTrips, getTrip, updateTrip, deleteTrip,
+  createTrip, listTrips, getTrip, updateTrip, deleteTrip, setTripPublic,
   createPlace, listPlaces, getPlace, updatePlace, deletePlace,
   migrateCategories,
   _sync: sync,

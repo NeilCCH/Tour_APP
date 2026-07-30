@@ -242,6 +242,8 @@ textarea { resize: vertical; min-height: 4.2rem; }
 
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: .7rem 0; gap: .7rem; }
 .toggle-row .desc { font-size: .82rem; color: var(--text-dim); margin-top: .15rem; }
+.sharelink { display: flex; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.sharelink input { font-size: .82rem; }
 
 /* ---- 按鈕 ---- */
 .btn {

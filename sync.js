@@ -26,6 +26,18 @@ export async function currentUser() {
   const { data } = await supabase.auth.getUser();
   return data?.user || null;
 }
+// ---- 公開分享:不需登入,靠 RLS 的「公開可讀」規則取得唯讀資料 ----------------
+export async function fetchPublicTrip(id) {
+  const { data, error } = await supabase.from('trips').select('id,data').eq('id', id).maybeSingle();
+  if (error || !data) return null;
+  return { ...(data.data || {}), id: data.id };
+}
+export async function fetchPublicPlaces(tripId) {
+  const { data, error } = await supabase.from('places').select('id,data').filter('data->>tripId', 'eq', tripId);
+  if (error || !data) return [];
+  return data.map((r) => ({ ...(r.data || {}), id: r.id })).filter((p) => !p.deleted);
+}
+
 export const signUp = (email, password) => supabase.auth.signUp({ email, password });
 export const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
 export const signOut = () => supabase.auth.signOut();

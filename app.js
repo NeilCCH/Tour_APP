@@ -82,15 +82,19 @@ function setHeader(title, showBack) {
 // ---- 路由 ------------------------------------------------------------------
 function parseRoute() {
   const h = location.hash.replace(/^#/, '');
+  const sm = h.match(/^\/share\/(.+)$/);
+  if (sm) return { view: 'share', tripId: sm[1] };
   const m = h.match(/^\/trip\/(.+)$/);
   if (m) return { view: 'trip', tripId: m[1] };
   return { view: 'home' };
 }
 
 async function render() {
+  const r = parseRoute();
+  // 公開分享頁:任何人(含未登入)都能唯讀檢視
+  if (r.view === 'share') { await renderSharedTrip(r.tripId); return; }
   // 未登入:一律顯示登入畫面,看不到任何行程
   if (!currentUser) { renderLoginGate(); return; }
-  const r = parseRoute();
   if (r.view === 'trip') {
     const trip = await db.getTrip(r.tripId);
     // 找不到,或不是自己的行程 → 回首頁(避免用網址看到別人的行程)
@@ -112,6 +116,70 @@ function renderLoginGate() {
     </div>`;
   app.querySelector('#gate-login').onclick = openAuthSheet;
   setFab(null);
+}
+
+// 公開分享的唯讀檢視(不需登入)
+async function renderSharedTrip(id) {
+  setHeader('分享的行程', false);
+  setFab(null);
+  app.innerHTML = `<div class="empty"><p>載入中…</p></div>`;
+  if (!cloud) { try { cloud = await import('./sync.js'); } catch (_) {} }
+  if (!cloud) { app.innerHTML = `<div class="empty"><p>無法載入(可能離線或被網路阻擋)。</p></div>`; return; }
+  const trip = await cloud.fetchPublicTrip(id);
+  if (!trip || trip.deleted) {
+    app.innerHTML = `<div class="empty"><div class="big">${ic('suitcase')}</div>
+      <p>找不到這個行程,<br>或它尚未開放公開分享。</p></div>`;
+    return;
+  }
+  const places = await cloud.fetchPublicPlaces(id);
+  app.innerHTML = sharedView(trip, places);
+}
+
+function sharedView(trip, places) {
+  const dayCount = tripDayCount(trip, places);
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const anchors = anchorIdSet(trip);
+  const datesFixed = !!(trip.startDate && trip.endDate);
+
+  let html = `
+    <div class="trip-hero">
+      <div style="font-size:1.4rem;font-weight:800;margin-bottom:.5rem">${esc(trip.name)}</div>
+      <div class="dates">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
+      <div class="stats">
+        <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
+        <div class="stat" style="--c:#14b8a6"><div class="v">${trip.people || 1}</div><div class="l">人</div></div>
+        <div class="stat" style="--c:#8b5cf6"><div class="v">${places.length}</div><div class="l">地點</div></div>
+      </div>
+      <div class="meta" style="margin-top:.7rem">唯讀分享・不可編輯</div>
+    </div>`;
+
+  for (let day = 1; day <= dayCount; day++) {
+    const color = dayColor(day);
+    const date = datesFixed ? dayDateLabel(trip.startDate, day) : '未設定日期';
+    html += `<div class="day-head" style="--dc:${color}"><span class="num">Day ${day}</span><span class="date">${date}</span></div>`;
+    const startP = (day > 1 && trip.dayStart?.[day]) ? byId.get(trip.dayStart[day]) : null;
+    const endP = (day < dayCount && trip.dayEnd?.[day]) ? byId.get(trip.dayEnd[day]) : null;
+    const sights = places.filter((p) => p.assignedDay === day && !anchors.has(p.id))
+      .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    const chain = [];
+    if (startP) chain.push(['出發', startP]);
+    sights.forEach((p) => chain.push(['sight', p]));
+    if (endP) chain.push(['回程', endP]);
+    if (chain.length === 0) { html += `<div class="day-empty">這天沒有安排</div>`; continue; }
+    chain.forEach(([kind, p], idx) => {
+      if (idx > 0) html += legHtml(chain[idx - 1][1], p);
+      if (kind === 'sight') {
+        const bits = placeMetaBits(p);
+        html += `<div class="card" style="cursor:default">
+          <h3>${p.pinned ? `<span class="pin-badge">${ic('pushpin')}</span>` : ''}${esc(p.name)} ${catTag(p.category)}</h3>
+          ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
+          ${p.notes ? `<div class="meta">${esc(p.notes)}</div>` : ''}</div>`;
+      } else {
+        html += `<div class="card anchor" style="cursor:default">${ic('hotel')} ${kind}・${esc(p.name)}</div>`;
+      }
+    });
+  }
+  return html;
 }
 
 // ---- 首頁：旅程列表 --------------------------------------------------------
@@ -639,12 +707,40 @@ function openTripSheet(trip = null) {
     </div>
     <label class="field"><span class="lab">人數</span>
       <input id="f-people" type="number" min="1" inputmode="numeric" value="${esc(trip?.people || 1)}"></label>
+    ${editing ? `
+    <div class="toggle-row">
+      <div><b>公開分享</b><div class="desc">開啟後,任何人有連結都能唯讀檢視這趟行程</div></div>
+      <div class="chip ${trip.public ? 'on' : ''}" id="f-public">${trip.public ? '已公開' : '未公開'}</div>
+    </div>
+    <div id="f-sharelink" class="sharelink" style="${trip.public ? '' : 'display:none'}">
+      <input id="f-shareurl" readonly value="${esc(location.origin + location.pathname + '#/share/' + trip.id)}">
+      <button type="button" class="btn ghost" id="f-copy" style="width:auto;padding:.6rem 1rem">複製</button>
+    </div>` : ''}
     <div class="btn-row">
       <button class="btn primary" id="f-save">${editing ? '儲存' : '建立旅程'}</button>
       ${editing ? '<button class="btn danger" id="f-del">刪除這趟旅程</button>' : ''}
       <button class="btn ghost" id="f-cancel">取消</button>
     </div>
   `, (sheet, close) => {
+    if (editing) {
+      let pub = !!trip.public;
+      const pubChip = sheet.querySelector('#f-public');
+      const linkBox = sheet.querySelector('#f-sharelink');
+      pubChip.onclick = async () => {
+        pub = !pub;
+        pubChip.classList.toggle('on', pub);
+        pubChip.textContent = pub ? '已公開' : '未公開';
+        linkBox.style.display = pub ? '' : 'none';
+        await db.setTripPublic(trip.id, pub);
+      };
+      sheet.querySelector('#f-copy').onclick = () => {
+        const url = sheet.querySelector('#f-shareurl').value;
+        navigator.clipboard?.writeText(url).then(() => {
+          sheet.querySelector('#f-copy').textContent = '已複製';
+          setTimeout(() => { sheet.querySelector('#f-copy').textContent = '複製'; }, 1500);
+        }).catch(() => {});
+      };
+    }
     sheet.querySelector('#f-cancel').onclick = close;
     sheet.querySelector('#f-save').onclick = async () => {
       const data = {
