@@ -252,6 +252,22 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .btn:active { opacity: .85; }
 .btn-row { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; }
 
+/* 更新通知列(有新版時從底部滑出)*/
+.update-bar {
+  position: fixed; left: 1rem; right: 5.6rem; bottom: calc(var(--safe-bottom) + 1.3rem);
+  transform: translateY(180%); transition: transform .3s cubic-bezier(.2,.8,.2,1); z-index: 40;
+  display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+  background: linear-gradient(135deg, #2f8bff, #1f6feb); color: #fff;
+  padding: .55rem .55rem .55rem 1rem; border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(13,58,168,.4); font-weight: 700; font-size: 1rem;
+}
+.update-bar.show { transform: translateY(0); }
+.update-bar span { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; }
+.update-bar button {
+  flex: none; background: #fff; color: var(--accent); border: none; border-radius: 999px;
+  padding: .45rem .9rem; font-weight: 700; font-size: .9rem; cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+
 /* 離線提示條 */
 .offline-bar { background: var(--accent-soft); color: var(--accent);
   text-align: center; font-size: .9rem; font-weight: 600; padding: .45rem; display: none; }

@@ -6,7 +6,7 @@
 // 改版須知：每次更新 App 外殼檔案後，把下面的 CACHE 版本號 +1（例如 v1 → v2），
 // 使用者下次連線開啟時就會自動更新到新版。
 
-const CACHE = 'tour-v13';
+const CACHE = 'tour-v14';
 
 const SHELL = [
   './',
@@ -24,7 +24,14 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // 不自動 skipWaiting:新版先進入「等待中」,由 App 顯示更新通知,
+  // 使用者按下才接管(見下方 message 處理)。
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+});
+
+// App 端按「立即更新」時會送這個訊息過來,新版才接管
+self.addEventListener('message', (e) => {
+  if (e.data === 'skip-waiting') self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {

@@ -866,7 +866,40 @@ header.querySelector('.back').addEventListener('click', () => { location.hash = 
 db.migrateCategories().catch(() => {}).finally(render); // 舊資料「餐廳」→「美食」後再繪製
 initCloud();
 
-// 註冊 Service Worker（讓 App 可離線、可加入主畫面）
+// ---- Service Worker + 更新通知 --------------------------------------------
+// 有新版時,底部跳出「有新版本 · 立即更新」;點一下叫新版接管並重新載入。
+function showUpdateBar(worker) {
+  if (document.querySelector('.update-bar')) return;
+  const bar = document.createElement('div');
+  bar.className = 'update-bar';
+  bar.innerHTML = `<span>${ic('sparkle')} 有新版本可用</span><button>立即更新</button>`;
+  document.body.appendChild(bar);
+  requestAnimationFrame(() => bar.classList.add('show'));
+  bar.querySelector('button').onclick = () => {
+    updatingSW = true;
+    bar.querySelector('button').textContent = '更新中…';
+    worker.postMessage('skip-waiting');
+  };
+}
+
+let updatingSW = false;
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (updatingSW) location.reload(); // 新版接管後重載,拿到最新畫面
+  });
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      // 開啟時就已有等待中的新版
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg.waiting);
+      // 之後偵測到新版下載完成
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBar(nw);
+        });
+      });
+    } catch (_) {}
+  });
 }
