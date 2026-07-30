@@ -6,7 +6,7 @@
 // 改版須知：每次更新 App 外殼檔案後，把下面的 CACHE 版本號 +1（例如 v1 → v2），
 // 使用者下次連線開啟時就會自動更新到新版。
 
-const CACHE = 'tour-v8';
+const CACHE = 'tour-v9';
 
 const SHELL = [
   './',
@@ -18,7 +18,6 @@ const SHELL = [
   './geo.js',
   './supabase-config.js',
   './manifest.webmanifest',
-  './icon.svg',
   './icon-180.png',
   './icon-192.png',
   './icon-512.png',
