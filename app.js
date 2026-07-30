@@ -80,10 +80,108 @@ async function renderHome() {
   setFab(() => openTripSheet());
 }
 
-// ---- 旅程頁：地點依狀態分組 ------------------------------------------------
+// ---- 旅程頁：清單 / 行程 兩個分頁 ------------------------------------------
+let tripTab = 'list'; // 'list' 依狀態分組的清單 ・ 'plan' 依天數排的行程
+
+// 這趟有幾天:有起訖日就照日期算,否則用 trip.dayCount / 已用到的最大天數
+function tripDayCount(trip, places) {
+  if (trip.startDate && trip.endDate) {
+    const d = Math.round((new Date(trip.endDate) - new Date(trip.startDate)) / 86400000) + 1;
+    if (d >= 1 && d <= 60) return d;
+  }
+  const maxDay = places.reduce((m, p) => Math.max(m, p.assignedDay || 0), 0);
+  return Math.max(1, trip.dayCount || maxDay || 1);
+}
+
+function dayDateLabel(startDate, day) {
+  const d = new Date(startDate); d.setDate(d.getDate() + (day - 1));
+  const wd = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+  return `${d.getMonth() + 1}/${d.getDate()}（${wd}）`;
+}
+
+function placeMetaBits(p) {
+  const bits = [];
+  const st = stayText(p.estimatedStay); if (st) bits.push(`⏱ ${st}`);
+  if (p.estimatedCost) bits.push(`💰 ${p.estimatedCost}`);
+  return bits;
+}
+
+// 「清單」分頁:依狀態分組（原本的樣子）
+function listBody(places) {
+  let body = '';
+  for (const status of STATUSES) {
+    const group = places.filter((p) => p.status === status);
+    if (group.length === 0) continue;
+    body += `<div class="section-title"><span class="dot st-${esc(status)}"></span> ${esc(status)}（${group.length}）</div>`;
+    body += group.map((p) => {
+      const bits = placeMetaBits(p);
+      if (p.openingHours) bits.push(`🕒 ${esc(p.openingHours)}`);
+      return `
+        <div class="card" data-place="${esc(p.id)}">
+          <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+            <span class="tag cat">${esc(p.category)}</span></h3>
+          ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
+          ${p.notes ? `<div class="meta">${esc(p.notes)}</div>` : ''}
+        </div>`;
+    }).join('');
+  }
+  return body;
+}
+
+// 「行程」分頁:依天數排,底下是候選池
+function planBody(trip, places, dayCount) {
+  const datesFixed = !!(trip.startDate && trip.endDate);
+  let body = '';
+  for (let day = 1; day <= dayCount; day++) {
+    const group = places.filter((p) => p.assignedDay === day)
+      .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    const date = datesFixed ? ` ・ ${dayDateLabel(trip.startDate, day)}` : '';
+    body += `<div class="section-title">Day ${day}${date}</div>`;
+    if (group.length === 0) {
+      body += `<div class="day-empty">尚未安排 — 從下方候選池點地點排進來</div>`;
+    } else {
+      body += group.map((p, i) => {
+        const bits = placeMetaBits(p);
+        return `
+          <div class="card itin" data-move="${esc(p.id)}">
+            <div class="itin-main">
+              <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+                <span class="tag cat">${esc(p.category)}</span></h3>
+              ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
+            </div>
+            <div class="reorder">
+              <button data-up="${esc(p.id)}" ${i === 0 ? 'disabled' : ''}>▲</button>
+              <button data-down="${esc(p.id)}" ${i === group.length - 1 ? 'disabled' : ''}>▼</button>
+            </div>
+          </div>`;
+      }).join('');
+      const stay = group.reduce((s, p) => s + (p.estimatedStay || 0), 0);
+      const cost = group.reduce((s, p) => s + (p.estimatedCost || 0), 0);
+      const full = stay > 600 ? ' ・ <span class="warn">這天有點滿</span>' : '';
+      body += `<div class="day-sum">共 ${group.length} 站 ・ ⏱ ${stayText(stay) || '0 分'} ・ 💰 ${cost}${full}</div>`;
+    }
+  }
+  if (!datesFixed) body += `<button class="btn ghost" id="add-day" style="margin:4px 0 8px">＋ 加一天</button>`;
+
+  const pool = places.filter((p) => !p.assignedDay).sort((a, b) => a.createdAt - b.createdAt);
+  body += `<div class="section-title">候選池（${pool.length}）</div>`;
+  if (pool.length === 0) {
+    body += `<div class="day-empty">沒有待排的地點</div>`;
+  } else {
+    body += pool.map((p) => `
+      <div class="card" data-move="${esc(p.id)}">
+        <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+          <span class="tag cat">${esc(p.category)}</span></h3>
+        <div class="meta">點一下 → 排進某一天</div>
+      </div>`).join('');
+  }
+  return body;
+}
+
 async function renderTrip(trip) {
   setHeader(trip.name, true);
   const places = await db.listPlaces(trip.id);
+  const dayCount = tripDayCount(trip, places);
 
   const head = `
     <div class="card" data-edit-trip style="cursor:default">
@@ -94,42 +192,115 @@ async function renderTrip(trip) {
       </div>
     </div>`;
 
-  let body = '';
+  let body;
   if (places.length === 0) {
     body = `
       <div class="empty">
         <div class="big">📍</div>
         <p>這趟旅程還沒有地點。<br>點右下角的 <b>＋</b> 手動新增第一個地點。</p>
       </div>`;
+    app.innerHTML = head + body;
   } else {
-    for (const status of STATUSES) {
-      const group = places.filter((p) => p.status === status);
-      if (group.length === 0) continue;
-      body += `<div class="section-title"><span class="dot st-${esc(status)}"></span> ${esc(status)}（${group.length}）</div>`;
-      body += group.map((p) => {
-        const bits = [];
-        const st = stayText(p.estimatedStay); if (st) bits.push(`⏱ ${st}`);
-        if (p.estimatedCost) bits.push(`💰 ${p.estimatedCost}`);
-        if (p.openingHours) bits.push(`🕒 ${esc(p.openingHours)}`);
-        return `
-          <div class="card" data-place="${esc(p.id)}">
-            <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
-              <span class="tag cat">${esc(p.category)}</span></h3>
-            ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
-            ${p.notes ? `<div class="meta">${esc(p.notes)}</div>` : ''}
-          </div>`;
-      }).join('');
-    }
+    const tabs = `
+      <div class="tabs">
+        <button class="tab ${tripTab === 'list' ? 'on' : ''}" data-tab="list">清單</button>
+        <button class="tab ${tripTab === 'plan' ? 'on' : ''}" data-tab="plan">行程</button>
+      </div>`;
+    body = tripTab === 'plan' ? planBody(trip, places, dayCount) : listBody(places);
+    app.innerHTML = head + tabs + body;
   }
 
-  app.innerHTML = head + body;
+  // 分頁切換
+  app.querySelectorAll('[data-tab]').forEach((b) =>
+    b.addEventListener('click', () => { tripTab = b.dataset.tab; render(); }));
   app.querySelector('[data-edit-trip-btn]')?.addEventListener('click', () => openTripSheet(trip));
+
+  // 清單卡片 → 編輯
   app.querySelectorAll('[data-place]').forEach((c) => {
     const p = places.find((x) => x.id === c.dataset.place);
     c.addEventListener('click', () => openPlaceSheet(trip.id, p));
   });
 
+  // 行程卡片 → 開排程選單；上下箭頭 → 調順序
+  app.querySelectorAll('[data-move]').forEach((c) => {
+    const p = places.find((x) => x.id === c.dataset.move);
+    c.addEventListener('click', (e) => {
+      if (e.target.closest('[data-up],[data-down]')) return;
+      openMoveSheet(trip, places, p, dayCount);
+    });
+  });
+  app.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation(); reorder(places, places.find((x) => x.id === b.dataset.up), -1);
+  }));
+  app.querySelectorAll('[data-down]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation(); reorder(places, places.find((x) => x.id === b.dataset.down), 1);
+  }));
+  app.querySelector('#add-day')?.addEventListener('click', async () => {
+    await db.updateTrip(trip.id, { dayCount: dayCount + 1 }); render();
+  });
+
   setFab(() => openPlaceSheet(trip.id));
+}
+
+// ---- 排程操作 --------------------------------------------------------------
+// 排進某天:設 assignedDay、排到當天最後,並把「候選」自動轉「已排入」
+async function assignToDay(trip, places, place, day) {
+  const group = places.filter((p) => p.assignedDay === day);
+  const patch = {
+    assignedDay: day,
+    orderIndex: group.reduce((m, p) => Math.max(m, p.orderIndex ?? 0), 0) + 1,
+  };
+  if (place.status === '候選') patch.status = '已排入';
+  await db.updatePlace(place.id, patch);
+  render();
+}
+// 移回候選池:清掉天數,並把「已排入」自動轉回「候選」（已造訪等狀態不動）
+async function moveToPool(place) {
+  const patch = { assignedDay: null, orderIndex: null };
+  if (place.status === '已排入') patch.status = '候選';
+  await db.updatePlace(place.id, patch);
+  render();
+}
+// 同一天內上/下移
+async function reorder(places, place, dir) {
+  if (!place) return;
+  const group = places.filter((p) => p.assignedDay === place.assignedDay)
+    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  const idx = group.findIndex((p) => p.id === place.id);
+  const swap = idx + dir;
+  if (swap < 0 || swap >= group.length) return;
+  const a = group[idx], b = group[swap];
+  const ao = a.orderIndex ?? idx, bo = b.orderIndex ?? swap;
+  await db.updatePlace(a.id, { orderIndex: bo });
+  await db.updatePlace(b.id, { orderIndex: ao });
+  render();
+}
+
+function openMoveSheet(trip, places, place, dayCount) {
+  const cur = place.assignedDay || 0;
+  const chips = [`<div class="chip ${cur === 0 ? 'on' : ''}" data-day="0">候選池</div>`];
+  for (let d = 1; d <= dayCount; d++) {
+    chips.push(`<div class="chip ${cur === d ? 'on' : ''}" data-day="${d}">Day ${d}</div>`);
+  }
+  openSheet(`
+    <h2>${esc(place.name)}</h2>
+    <label class="field"><span class="lab">排到哪一天</span>
+      <div class="chips" id="m-days">${chips.join('')}</div></label>
+    <div class="btn-row">
+      <button class="btn ghost" id="m-edit">編輯地點內容</button>
+      <button class="btn ghost" id="m-cancel">關閉</button>
+    </div>
+  `, (sheet, close) => {
+    sheet.querySelector('#m-days').addEventListener('click', async (e) => {
+      const chip = e.target.closest('.chip'); if (!chip) return;
+      const day = Number(chip.dataset.day);
+      close();
+      if (day === 0) await moveToPool(place);
+      else await assignToDay(trip, places, place, day);
+    });
+    sheet.querySelector('#m-edit').onclick = () => { close(); openPlaceSheet(trip.id, place); };
+    sheet.querySelector('#m-cancel').onclick = close;
+  });
 }
 
 // ---- 浮動新增鈕 ------------------------------------------------------------

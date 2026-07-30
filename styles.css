@@ -98,6 +98,24 @@ main { padding: 16px; padding-bottom: calc(var(--safe-bottom) + 96px); max-width
 .section-title { font-size: 13px; font-weight: 700; color: var(--text-dim);
   text-transform: uppercase; letter-spacing: .04em; margin: 22px 4px 8px; }
 
+/* ---- 分頁 ---- */
+.tabs { display: flex; gap: 6px; background: color-mix(in srgb, var(--text-dim) 12%, transparent);
+  padding: 4px; border-radius: 12px; margin-bottom: 12px; }
+.tab { flex: 1; border: none; background: transparent; color: var(--text-dim);
+  font-size: 15px; font-weight: 600; padding: 8px; border-radius: 9px; cursor: pointer; font-family: inherit; }
+.tab.on { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+
+/* ---- 行程卡片（含上下移）---- */
+.card.itin { display: flex; align-items: center; gap: 10px; }
+.card.itin .itin-main { flex: 1; min-width: 0; }
+.reorder { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.reorder button { width: 34px; height: 28px; border: 1px solid var(--border); background: var(--card);
+  color: var(--text); border-radius: 8px; font-size: 13px; cursor: pointer; }
+.reorder button:disabled { opacity: .3; }
+.day-empty { color: var(--text-dim); font-size: 14px; padding: 10px 4px 14px; }
+.day-sum { color: var(--text-dim); font-size: 13px; padding: 2px 4px 10px; }
+.warn { color: #d97706; font-weight: 600; }
+
 /* ---- 空狀態 ---- */
 .empty { text-align: center; color: var(--text-dim); padding: 48px 20px; }
 .empty .big { font-size: 44px; margin-bottom: 12px; }
