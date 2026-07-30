@@ -46,6 +46,10 @@ body {
   min-height: 100dvh;
 }
 
+/* 內嵌 SVG 圖示:單色,跟著文字大小與顏色 */
+.ic { display: inline-block; line-height: 0; color: inherit; }
+.ic svg { width: 1.15em; height: 1.15em; vertical-align: -0.2em; }
+
 /* ---- 標題欄(藍色品牌漸層,浮起感)---- */
 header {
   position: sticky; top: 0; z-index: 10;

@@ -26,12 +26,12 @@ export function haversine(a, b) {
 export function legModes(a, b) {
   const straight = haversine(a, b);
   const roadKm = straight * 1.25;
-  const mk = (icon, label, kmh, km) => ({ icon, label, minutes: Math.max(1, Math.round((km / kmh) * 60)) });
+  const mk = (key, label, kmh, km) => ({ key, label, minutes: Math.max(1, Math.round((km / kmh) * 60)) });
   const modes = [];
-  if (roadKm < 8) modes.push(mk('🚶', '步行', 4.5, roadKm)); // 太遠就不列步行
-  modes.push(mk('🚌', '巴士', 14, roadKm));
-  modes.push(mk('🚇', '捷運', 32, straight * 1.15));
-  modes.push(mk('🚗', '駕車', 24, roadKm));
+  if (roadKm < 8) modes.push(mk('walk', '步行', 4.5, roadKm)); // 太遠就不列步行
+  modes.push(mk('bus', '巴士', 14, roadKm));
+  modes.push(mk('metro', '捷運', 32, straight * 1.15));
+  modes.push(mk('car', '駕車', 24, roadKm));
   return { km: roadKm, modes };
 }
 

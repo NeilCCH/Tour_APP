@@ -19,6 +19,30 @@ const header = document.getElementById('header');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// ---- 自繪 SVG 圖示（取代 emoji;單色,跟著文字顏色與大小）----------------------
+const ICONS = {
+  walk: '<circle cx="12" cy="4.2" r="1.7"/><path d="M12 7v5.5M12 9.2 9 11M12 9.2 15 10.7M12 12.5 9.6 19M12 12.5 14.4 19"/>',
+  bus: '<rect x="4.5" y="4" width="15" height="12.5" rx="2.5"/><path d="M4.5 11h15M8.5 16.5V19M15.5 16.5V19"/><circle cx="8.5" cy="13.7" r=".7"/><circle cx="15.5" cy="13.7" r=".7"/>',
+  metro: '<rect x="5" y="3.5" width="14" height="13" rx="3"/><path d="M5 11h14M9 16.5 7 20M15 16.5 17 20"/><circle cx="9" cy="13.8" r=".8"/><circle cx="15" cy="13.8" r=".8"/>',
+  car: '<path d="M4 13 6 8.2A2 2 0 0 1 7.8 7h8.4a2 2 0 0 1 1.8 1.2L20 13"/><rect x="3.5" y="12.5" width="17" height="5" rx="2"/><circle cx="7.5" cy="17.6" r="1.3"/><circle cx="16.5" cy="17.6" r="1.3"/>',
+  pin: '<path d="M12 21s6.5-6 6.5-10.5a6.5 6.5 0 0 0-13 0C5.5 15 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3.3 2"/>',
+  cash: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.6 9.4a2.2 2.2 0 0 1 2.1-1.5h.8a2 2 0 0 1 0 4h-1a2 2 0 0 0 0 4h.8a2.2 2.2 0 0 0 2.1-1.5"/>',
+  calendar: '<rect x="4" y="5.5" width="16" height="14" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+  hotel: '<path d="M3.5 7v12M3.5 13.5h17V19M20.5 19v-4a2.5 2.5 0 0 0-2.5-2.5H9.5V15"/><circle cx="7" cy="11" r="1.6"/>',
+  suitcase: '<rect x="4" y="7.5" width="16" height="12.5" rx="2.5"/><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M4 13.5h16"/>',
+  link: '<path d="M10 13a4 4 0 0 0 5.5.3l2-2a4 4 0 0 0-5.6-5.6l-1 .9"/><path d="M14 11a4 4 0 0 0-5.5-.3l-2 2a4 4 0 0 0 5.6 5.6l1-.9"/>',
+  pushpin: '<path fill-rule="evenodd" d="M12 2a6.5 6.5 0 0 0-6.5 6.5C5.5 13 12 21 12 21s6.5-8 6.5-12.5A6.5 6.5 0 0 0 12 2zm0 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>',
+  sparkle: '<path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/>',
+};
+const FILLED = new Set(['pushpin', 'sparkle']);
+function ic(name) {
+  const p = ICONS[name]; if (!p) return '';
+  const fill = FILLED.has(name) ? 'currentColor' : 'none';
+  const stroke = FILLED.has(name) ? 'none' : 'currentColor';
+  return `<span class="ic"><svg viewBox="0 0 24 24" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg></span>`;
+}
+
 function fmtDateRange(a, b) {
   if (!a && !b) return '尚未設定日期';
   if (a && b) return `${a} → ${b}`;
@@ -72,7 +96,7 @@ async function renderHome() {
   if (trips.length === 0) {
     app.innerHTML = `
       <div class="empty">
-        <div class="big">🧳</div>
+        <div class="big">${ic('suitcase')}</div>
         <p>還沒有旅程。<br>點右下角的 <b>＋</b> 建立第一趟旅程。</p>
       </div>`;
   } else {
@@ -111,8 +135,8 @@ function dayDateLabel(startDate, day) {
 
 function placeMetaBits(p) {
   const bits = [];
-  if (p.estimatedStay) bits.push(`⏱ ${fmtTime(p.estimatedStay)}`);
-  if (p.estimatedCost) bits.push(`💰 ${p.estimatedCost}`);
+  if (p.estimatedStay) bits.push(`${ic('clock')} ${fmtTime(p.estimatedStay)}`);
+  if (p.estimatedCost) bits.push(`${ic('cash')} ${p.estimatedCost}`);
   return bits;
 }
 
@@ -125,10 +149,10 @@ function listBody(places) {
     body += `<div class="section-title"><span class="dot st-${esc(status)}"></span> ${esc(status)}（${group.length}）</div>`;
     body += group.map((p) => {
       const bits = placeMetaBits(p);
-      if (p.openingHours) bits.push(`🕒 ${esc(p.openingHours)}`);
+      if (p.openingHours) bits.push(`${ic('clock')} ${esc(p.openingHours)}`);
       return `
         <div class="card" data-place="${esc(p.id)}">
-          <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+          <h3>${p.pinned ? `<span class="pin-badge">${ic('pushpin')}</span>` : ''}${esc(p.name)}
             <span class="tag cat">${esc(p.category)}</span></h3>
           ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
           ${p.notes ? `<div class="meta">${esc(p.notes)}</div>` : ''}
@@ -154,8 +178,8 @@ function legHtml(a, b) {
   if (!(hasCoord(a) && hasCoord(b))) return '';
   const { km, modes } = legModes(a, b);
   const kmTxt = km < 1 ? '<1 km' : `${km.toFixed(1)} km`;
-  const pills = modes.map((m) => `<span class="mp"><span class="ic">${m.icon}</span>${fmtTime(m.minutes)}</span>`).join('');
-  return `<div class="leg"><span class="km">🚩 ${kmTxt}</span>${pills}</div>`;
+  const pills = modes.map((m) => `<span class="mp">${ic(m.key)}${fmtTime(m.minutes)}</span>`).join('');
+  return `<div class="leg"><span class="km">${ic('pin')} ${kmTxt}</span>${pills}</div>`;
 }
 
 function sightCard(p, i, n) {
@@ -163,7 +187,7 @@ function sightCard(p, i, n) {
   return `
     <div class="card itin" data-move="${esc(p.id)}">
       <div class="itin-main">
-        <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+        <h3>${p.pinned ? `<span class="pin-badge">${ic('pushpin')}</span>` : ''}${esc(p.name)}
           <span class="tag cat">${esc(p.category)}</span></h3>
         ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
       </div>
@@ -176,7 +200,7 @@ function sightCard(p, i, n) {
 
 function anchorRow(role, p) {
   const warn = hasCoord(p) ? '' : ' <span class="warn">未定位</span>';
-  return `<div class="card anchor" data-move="${esc(p.id)}">🏨 ${role}・${esc(p.name)}${warn}</div>`;
+  return `<div class="card anchor" data-move="${esc(p.id)}">${ic('hotel')} ${role}・${esc(p.name)}${warn}</div>`;
 }
 
 // 每一天的代表色(讓每日視覺辨識更明顯)
@@ -193,7 +217,7 @@ function poolCard(p) {
   const hint = p.category === '住宿' ? '點一下 → 設為某天的出發/回程點' : '點一下 → 排進某一天';
   return `
     <div class="card" data-move="${esc(p.id)}">
-      <h3>${p.pinned ? '<span class="pin-badge">📌</span>' : ''}${esc(p.name)}
+      <h3>${p.pinned ? `<span class="pin-badge">${ic('pushpin')}</span>` : ''}${esc(p.name)}
         <span class="tag cat">${esc(p.category)}</span></h3>
       <div class="meta">${hint}</div>
     </div>`;
@@ -206,7 +230,7 @@ function planBody(trip, places, dayCount) {
   const anchors = anchorIdSet(trip);
   if (planDay !== 'pool' && planDay > dayCount) planDay = 1;
 
-  let body = `<button class="btn primary" id="suggest" style="margin-bottom:12px">✨ 建議安排</button>`;
+  let body = `<button class="btn primary" id="suggest" style="margin-bottom:12px">${ic('sparkle')} 建議安排</button>`;
 
   // 時間單位切換（分 / 時）
   body += `<div class="unit-row">時間顯示
@@ -263,7 +287,7 @@ function planBody(trip, places, dayCount) {
       const stay = sights.reduce((s, p) => s + (p.estimatedStay || 0), 0);
       const cost = sights.reduce((s, p) => s + (p.estimatedCost || 0), 0);
       const full = stay > 600 ? ' ・ <span class="warn">這天有點滿</span>' : '';
-      body += `<div class="day-sum">共 ${sights.length} 站 ・ ⏱ ${fmtTime(stay)} ・ 💰 ${cost}${full}</div>`;
+      body += `<div class="day-sum">共 ${sights.length} 站 ・ ${ic('clock')} ${fmtTime(stay)} ・ ${ic('cash')} ${cost}${full}</div>`;
     }
   }
   return body;
@@ -276,7 +300,7 @@ async function renderTrip(trip) {
 
   const head = `
     <div class="trip-hero">
-      <div class="dates">📅 ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
+      <div class="dates">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
       <div class="stats">
         <div class="stat"><div class="v">${dayCount}</div><div class="l">天</div></div>
         <div class="stat"><div class="v">${trip.people}</div><div class="l">人</div></div>
@@ -289,7 +313,7 @@ async function renderTrip(trip) {
   if (places.length === 0) {
     body = `
       <div class="empty">
-        <div class="big">📍</div>
+        <div class="big">${ic('pin')}</div>
         <p>這趟旅程還沒有地點。<br>點右下角的 <b>＋</b> 手動新增第一個地點。</p>
       </div>`;
     app.innerHTML = head + body;
@@ -349,7 +373,7 @@ async function renderTrip(trip) {
 // 建議安排:兩種方式。預設「只優化每天順序」——不把地點跨日移動。
 function suggestArrange(trip, places, dayCount) {
   openSheet(`
-    <h2>✨ 建議安排</h2>
+    <h2>${ic('sparkle')} 建議安排</h2>
     <p class="meta" style="margin-bottom:14px">選一種方式（都只影響已定位的景點）:</p>
     <div class="btn-row">
       <button class="btn primary" id="s-order">只優化每天順序
@@ -497,9 +521,9 @@ function openAnchorSheet(trip, place, dayCount) {
   const save = () => db.updateTrip(trip.id, { dayStart, dayEnd });
 
   openSheet(`
-    <h2>🏨 ${esc(place.name)}</h2>
+    <h2>${ic('hotel')} ${esc(place.name)}</h2>
     <p class="meta" style="margin-bottom:10px">設為哪幾天的出發點 / 回程點。設「回程」會自動把隔天「出發」也設成這間。${hasCoord(place) ? '' : '<b class="warn"> 此地點尚未定位,交通估算會缺這段。</b>'}</p>
-    <button class="btn ghost" id="a-all" style="margin-bottom:8px">🔗 連住整趟（每晚都住這裡）</button>
+    <button class="btn ghost" id="a-all" style="margin-bottom:8px">${ic('link')} 連住整趟（每晚都住這裡）</button>
     <div class="anchor-grid" id="anchor-grid">${gridHtml()}</div>
     <div class="btn-row">
       <button class="btn ghost" id="a-clear">清除此住宿的所有設定</button>
@@ -627,7 +651,7 @@ function openPlaceSheet(tripId, place = null) {
 
     <label class="field"><span class="lab">位置（給「建議安排」用）</span>
       <div style="display:flex;gap:8px;align-items:center">
-        <button type="button" class="chip" id="f-locate">📍 用名稱定位</button>
+        <button type="button" class="chip" id="f-locate">${ic('pin')} 用名稱定位</button>
         <span class="meta" id="f-loc" style="flex:1;min-width:0"></span>
       </div></label>
 
@@ -658,7 +682,7 @@ function openPlaceSheet(tripId, place = null) {
 
     <div class="toggle-row">
       <div><b>釘選為固定錨點</b><div class="desc">訂位餐廳、演出、機票等時間固定的點</div></div>
-      <div class="chip ${place?.pinned ? 'on' : ''}" id="f-pin">📌 ${place?.pinned ? '已釘選' : '未釘選'}</div>
+      <div class="chip ${place?.pinned ? 'on' : ''}" id="f-pin">${ic('pushpin')} ${place?.pinned ? '已釘選' : '未釘選'}</div>
     </div>
 
     <div class="btn-row">
@@ -702,7 +726,7 @@ function openPlaceSheet(tripId, place = null) {
     pinChip.onclick = () => {
       pinned = !pinned;
       pinChip.classList.toggle('on', pinned);
-      pinChip.textContent = `📌 ${pinned ? '已釘選' : '未釘選'}`;
+      pinChip.innerHTML = `${ic('pushpin')} ${pinned ? '已釘選' : '未釘選'}`;
     };
 
     sheet.querySelector('#f-cancel').onclick = close;
