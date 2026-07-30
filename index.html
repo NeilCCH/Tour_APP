@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <title>旅遊規劃</title>
+  <meta name="description" content="行前規劃、旅途記錄、旅遊書整理——同一份資料的三種介面。">
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#0f766e" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1412" media="(prefers-color-scheme: dark)">
+
+  <!-- iOS 加入主畫面 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="旅遊規劃">
+  <link rel="apple-touch-icon" href="./icon-180.png">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="offline-bar">離線中 ・ 資料仍存在此裝置,連線後正常運作</div>
+
+  <header id="header">
+    <button class="back" aria-label="返回">‹ 旅程</button>
+    <h1>我的旅程</h1>
+  </header>
+
+  <main id="app"></main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

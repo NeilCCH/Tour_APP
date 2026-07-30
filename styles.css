@@ -1,0 +1,166 @@
+/* styles.css — 旅遊規劃 App
+   行動優先、iOS 風格；支援淺色/深色。刻意用系統字型，開啟快、原生感強。 */
+
+:root {
+  --accent: #0f766e;
+  --accent-soft: #ccfbf1;
+  --bg: #f5f5f4;
+  --card: #ffffff;
+  --text: #1c1917;
+  --text-dim: #78716c;
+  --border: #e7e5e4;
+  --danger: #dc2626;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --radius: 16px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #2dd4bf;
+    --accent-soft: #134e4a;
+    --bg: #1c1917;
+    --card: #292524;
+    --text: #fafaf9;
+    --text-dim: #a8a29e;
+    --border: #44403c;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+/* ---- 頂部標題列 ---- */
+header {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  padding: calc(var(--safe-top) + 10px) 16px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+header .back {
+  background: none; border: none; color: var(--accent);
+  font-size: 17px; cursor: pointer; padding: 4px 4px 4px 0;
+  display: none; align-items: center; gap: 2px;
+}
+header.has-back .back { display: inline-flex; }
+header h1 { font-size: 20px; font-weight: 700; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+main { padding: 16px; padding-bottom: calc(var(--safe-bottom) + 96px); max-width: 640px; margin: 0 auto; }
+
+/* ---- 卡片 ---- */
+.card {
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); border: 1px solid var(--border);
+  padding: 16px; margin-bottom: 12px; cursor: pointer;
+  transition: transform .08s ease;
+}
+.card:active { transform: scale(.985); }
+.card h3 { font-size: 17px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
+.card .meta { color: var(--text-dim); font-size: 14px; margin-top: 4px; }
+
+/* ---- 狀態 / 分類標籤 ---- */
+.tag {
+  display: inline-block; font-size: 12px; font-weight: 600;
+  padding: 2px 9px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.tag.cat { background: color-mix(in srgb, var(--text-dim) 14%, transparent); color: var(--text-dim); }
+.pin-badge { font-size: 13px; }
+
+/* 依狀態上色 */
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.st-候選 { background: #a8a29e; }
+.st-已排入 { background: #0ea5e9; }
+.st-已造訪 { background: #16a34a; }
+.st-已造訪・未規劃 { background: #f59e0b; }
+
+/* ---- 區段標題 ---- */
+.section-title { font-size: 13px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: .04em; margin: 22px 4px 8px; }
+
+/* ---- 空狀態 ---- */
+.empty { text-align: center; color: var(--text-dim); padding: 48px 20px; }
+.empty .big { font-size: 44px; margin-bottom: 12px; }
+.empty p { font-size: 15px; }
+
+/* ---- 浮動新增鈕 ---- */
+.fab {
+  position: fixed; right: 20px; bottom: calc(var(--safe-bottom) + 20px);
+  width: 60px; height: 60px; border-radius: 50%;
+  background: var(--accent); color: #fff; border: none;
+  font-size: 30px; line-height: 1; cursor: pointer;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 45%, transparent);
+  z-index: 20; display: flex; align-items: center; justify-content: center;
+}
+.fab:active { transform: scale(.92); }
+
+/* ---- 底部彈出表單（sheet）---- */
+.sheet-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.4);
+  z-index: 30; opacity: 0; transition: opacity .2s ease;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet-backdrop.show { opacity: 1; }
+.sheet {
+  background: var(--bg); width: 100%; max-width: 640px;
+  border-radius: 20px 20px 0 0; padding: 8px 16px calc(var(--safe-bottom) + 20px);
+  max-height: 92dvh; overflow-y: auto;
+  transform: translateY(100%); transition: transform .25s cubic-bezier(.2,.8,.2,1);
+}
+.sheet-backdrop.show .sheet { transform: translateY(0); }
+.sheet .grabber { width: 40px; height: 5px; border-radius: 3px; background: var(--border);
+  margin: 8px auto 12px; }
+.sheet h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+
+/* ---- 表單元件 ---- */
+label.field { display: block; margin-bottom: 14px; }
+label.field .lab { font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; display: block; }
+input, select, textarea {
+  width: 100%; font-size: 16px; /* 16px 避免 iOS 自動放大 */
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--card); color: var(--text); font-family: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+textarea { resize: vertical; min-height: 64px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); font-size: 14px; cursor: pointer;
+}
+.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.toggle-row { display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 0; }
+.toggle-row .desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+/* ---- 按鈕 ---- */
+.btn {
+  width: 100%; padding: 14px; border-radius: 12px; border: none;
+  font-size: 16px; font-weight: 650; cursor: pointer; font-family: inherit;
+}
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.ghost { background: transparent; color: var(--text-dim); }
+.btn.danger { background: transparent; color: var(--danger); }
+.btn:active { opacity: .85; }
+.btn-row { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+
+/* 離線提示條 */
+.offline-bar { background: var(--accent-soft); color: var(--accent);
+  text-align: center; font-size: 13px; padding: 6px; display: none; }
+body.offline .offline-bar { display: block; }
