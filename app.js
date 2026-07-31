@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v23'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v24'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -490,7 +490,10 @@ async function renderTrip(trip) {
         <div class="stat" style="--c:#14b8a6"><div class="v">${trip.people}</div><div class="l">人</div></div>
         <div class="stat" style="--c:#8b5cf6"><div class="v">${places.length}</div><div class="l">地點</div></div>
       </div>
-      <button class="btn ghost edit" data-edit-trip-btn>編輯旅程資訊</button>
+      <div class="hero-actions">
+        <button class="btn ghost" data-edit-trip-btn>編輯旅程</button>
+        <button class="btn ghost" data-share-btn>${ic('link')} 分享 / 邀請協作</button>
+      </div>
     </div>`;
 
   let body;
@@ -515,6 +518,7 @@ async function renderTrip(trip) {
   app.querySelectorAll('[data-tab]').forEach((b) =>
     b.addEventListener('click', () => { tripTab = b.dataset.tab; render(); }));
   app.querySelector('[data-edit-trip-btn]')?.addEventListener('click', () => openTripSheet(trip));
+  app.querySelector('[data-share-btn]')?.addEventListener('click', () => openTripSheet(trip, true));
 
   // 清單卡片 → 編輯
   app.querySelectorAll('[data-place]').forEach((c) => {
@@ -783,7 +787,7 @@ function openSheet(innerHTML, onMount) {
 }
 
 // ---- 旅程表單 --------------------------------------------------------------
-function openTripSheet(trip = null) {
+function openTripSheet(trip = null, focusShare = false) {
   const editing = !!trip;
   openSheet(`
     <h2>${editing ? '編輯旅程' : '新增旅程'}</h2>
@@ -798,6 +802,7 @@ function openTripSheet(trip = null) {
     <label class="field"><span class="lab">人數</span>
       <input id="f-people" type="number" min="1" inputmode="numeric" value="${esc(trip?.people || 1)}"></label>
     ${editing ? `
+    <div class="section-title" id="share-anchor" style="margin-top:1rem">分享與協作</div>
     <div class="toggle-row">
       <div><b>公開分享</b><div class="desc">開啟後,任何人有連結都能唯讀檢視這趟行程</div></div>
       <div class="chip ${trip.public ? 'on' : ''}" id="f-public">${trip.public ? '已公開' : '未公開'}</div>
@@ -806,7 +811,7 @@ function openTripSheet(trip = null) {
       <input id="f-shareurl" readonly value="${esc(location.origin + location.pathname + '#/share/' + trip.id)}">
       <button type="button" class="btn ghost" id="f-copy" style="width:auto;padding:.6rem 1rem">複製</button>
     </div>` : ''}
-    ${editing && trip.ownerId === currentUser?.id ? `
+    ${editing ? `
     <div class="toggle-row">
       <div><b>邀請協作</b><div class="desc">產生連結,對方登入後可一起編輯${(trip.members || []).length ? `（目前 ${(trip.members || []).length} 位協作者）` : ''}</div></div>
       <button type="button" class="chip" id="f-invite">${trip.inviteCode ? '重新產生' : '產生連結'}</button>
@@ -822,6 +827,10 @@ function openTripSheet(trip = null) {
       <button class="btn ghost" id="f-cancel">取消</button>
     </div>
   `, (sheet, close) => {
+    if (focusShare) {
+      const anchor = sheet.querySelector('#share-anchor');
+      if (anchor) setTimeout(() => anchor.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    }
     if (editing) {
       let pub = !!trip.public;
       const pubChip = sheet.querySelector('#f-public');
