@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v36'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v37'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -696,6 +696,18 @@ async function reorder(places, place, dir) {
   render();
 }
 
+// 複製一份地點到候選池（同名同座標,方便「同一機場進出」等重複使用的交通點）
+async function duplicatePlace(trip, place) {
+  return db.createPlace(trip.id, {
+    name: place.name, category: place.category,
+    lat: place.lat, lng: place.lng, source: place.source,
+    estimatedStay: place.estimatedStay, estimatedCost: place.estimatedCost,
+    openingHours: place.openingHours, referenceUrl: place.referenceUrl,
+    notes: place.notes, coverImage: place.coverImage,
+    assignedDay: null, orderIndex: null, status: '候選',
+  });
+}
+
 function openMoveSheet(trip, places, place, dayCount) {
   if (place.category === '住宿') return openAnchorSheet(trip, place, dayCount);
   const cur = place.assignedDay || 0;
@@ -703,11 +715,16 @@ function openMoveSheet(trip, places, place, dayCount) {
   for (let d = 1; d <= dayCount; d++) {
     chips.push(`<div class="chip ${cur === d ? 'on' : ''}" data-day="${d}">Day ${d}</div>`);
   }
+  // 交通類:提供「複製一份」,讓同一個機場/車站可以重複排(去程一份、回程一份)
+  const dupHtml = place.category === '交通'
+    ? `<button class="btn ghost" id="m-dup" style="--c:#3b82f6;color:var(--c)">${ic('link')} 複製一份(去程/回程重複用)</button>`
+    : '';
   openSheet(`
     <h2>${esc(place.name)}</h2>
     <label class="field"><span class="lab">排到哪一天</span>
       <div class="chips" id="m-days">${chips.join('')}</div></label>
     <div class="btn-row">
+      ${dupHtml}
       <button class="btn ghost" id="m-edit">編輯地點內容</button>
       <button class="btn ghost" id="m-cancel">關閉</button>
     </div>
@@ -719,6 +736,14 @@ function openMoveSheet(trip, places, place, dayCount) {
       if (day === 0) await moveToPool(place);
       else await assignToDay(trip, places, place, day);
     });
+    const dup = sheet.querySelector('#m-dup');
+    if (dup) dup.onclick = async () => {
+      close();
+      const copy = await duplicatePlace(trip, place);
+      render();
+      const fresh = await db.listPlaces(trip.id);
+      openMoveSheet(trip, fresh, copy, dayCount); // 立刻選要排到回程哪一天
+    };
     sheet.querySelector('#m-edit').onclick = () => { close(); openPlaceSheet(trip.id, place); };
     sheet.querySelector('#m-cancel').onclick = close;
   });
