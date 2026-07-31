@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v32'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v33'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -35,6 +35,7 @@ const ICONS = {
   link: '<path d="M10 13a4 4 0 0 0 5.5.3l2-2a4 4 0 0 0-5.6-5.6l-1 .9"/><path d="M14 11a4 4 0 0 0-5.5-.3l-2 2a4 4 0 0 0 5.6 5.6l1-.9"/>',
   pushpin: '<path fill-rule="evenodd" d="M12 2a6.5 6.5 0 0 0-6.5 6.5C5.5 13 12 21 12 21s6.5-8 6.5-12.5A6.5 6.5 0 0 0 12 2zm0 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>',
   sparkle: '<path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/>',
+  edit: '<path d="M4 20h4L18.5 9.5a2 2 0 0 0-2.8-2.8L5 17.2V20z"/><path d="M14.5 7.5l2.8 2.8"/>',
 };
 const FILLED = new Set(['pushpin', 'sparkle']);
 function ic(name) {
@@ -528,8 +529,8 @@ async function renderTrip(trip) {
         <div class="stat" style="--c:#8b5cf6"><div class="v">${places.length}</div><div class="l">地點</div></div>
       </div>
       <div class="hero-actions">
-        <button class="btn ghost" data-edit-trip-btn>編輯旅程</button>
-        <button class="btn ghost" data-share-btn>${ic('link')} 分享 / 邀請協作</button>
+        <button class="btn ghost" style="--c:#64748b" data-edit-trip-btn>${ic('edit')} 編輯旅程</button>
+        <button class="btn ghost" style="--c:#ec4899" data-share-btn>${ic('link')} 分享 / 邀請協作</button>
       </div>
     </div>`;
 
