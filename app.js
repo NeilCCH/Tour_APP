@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v33'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v34'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
