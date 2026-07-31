@@ -72,6 +72,32 @@ export const signOut = () => supabase.auth.signOut();
 // 拉回時用雲端權威的 user_id 蓋上 ownerId,確保資料正確歸屬到擁有者
 const fromCloud = (c) => ({ ...(c.data || {}), id: c.id, updatedAt: Number(c.updated_at) || 0, deleted: !!c.deleted, ownerId: c.user_id });
 const toCloud = (l) => ({ id: l.id, data: l, updated_at: l.updatedAt || 0, deleted: !!l.deleted });
+
+// 欄位級合併:逐欄位取「修改時間(fts)較新」的一方(沒有 fts 就退回整筆 updatedAt)。
+// 這樣兩人改同一筆的不同欄位都能保留,只有同一欄同時改才需取捨。
+function fieldMerge(a, b) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  keys.delete('fts'); keys.delete('updatedAt');
+  const out = {}, fts = {};
+  for (const k of keys) {
+    if (k === 'id' || k === 'createdAt') { out[k] = a[k] ?? b[k]; continue; }
+    if (k === 'ownerId') { out[k] = b.ownerId ?? a.ownerId; continue; } // 擁有者以雲端為權威
+    const at = (a.fts && a.fts[k] != null) ? a.fts[k] : (a.updatedAt || 0);
+    const bt = (b.fts && b.fts[k] != null) ? b.fts[k] : (b.updatedAt || 0);
+    out[k] = bt > at ? b[k] : a[k];
+    fts[k] = Math.max(at, bt);
+  }
+  out.fts = fts;
+  out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
+  return out;
+}
+// 比較兩筆「值」是否相同(忽略 fts / updatedAt,避免無意義的來回推送)
+function sameData(x, y) {
+  const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
+  keys.delete('fts'); keys.delete('updatedAt');
+  for (const k of keys) if (JSON.stringify(x[k]) !== JSON.stringify(y[k])) return false;
+  return true;
+}
 // 註:upsert 時不帶 user_id,交給資料表預設值 auth.uid() 自動填入(RLS 保護)。
 
 async function syncTable(table) {
@@ -88,20 +114,10 @@ async function syncTable(table) {
     const c = cloudMap.get(id);
     const l = localMap.get(id);
     if (c && l) {
-      const cu = Number(c.updated_at) || 0;
-      const lu = l.updatedAt || 0;
-      if (cu > lu) {
-        await db._sync.putRaw(table, fromCloud(c));              // 雲端較新 → 蓋回本地
-      } else {
-        // ownerId 以雲端 user_id 為權威,不受時間戳比較影響(修復:等於時也要補上,
-        // 否則舊資料的 ownerId 永遠補不到,列表就會過濾掉、看似消失)
-        let ll = l;
-        if (l.ownerId !== c.user_id) {
-          ll = { ...l, ownerId: c.user_id };
-          await db._sync.putRaw(table, ll);                      // 只補 ownerId,不動 updatedAt
-        }
-        if (lu > cu) toPush.push(toCloud(ll));                   // 本地較新 → 推上雲端
-      }
+      const r = fromCloud(c);              // 雲端記錄(已含權威 ownerId)
+      const merged = fieldMerge(l, r);     // 逐欄位合併
+      if (!sameData(merged, l)) await db._sync.putRaw(table, merged); // 本地有變 → 寫回
+      if (!sameData(merged, r)) toPush.push(toCloud(merged));         // 雲端有差 → 推上去
     } else if (c && !l) {
       await db._sync.putRaw(table, fromCloud(c));                // 只有雲端有 → 拉下來
     } else if (l && !c) {
@@ -134,11 +150,32 @@ export async function fullSync() {
   }
 }
 
-// 本地資料一有變動,稍等一下再推(避免連續輸入時狂打 API)
+// 本地資料一有變動,稍等一下再推(避免連續輸入時狂打 API),推完廣播通知協作者
 let pushTimer = null;
 function schedulePush() {
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => { fullSync().catch(() => {}); }, 1500);
+  pushTimer = setTimeout(async () => { await fullSync().catch(() => {}); broadcastChanged(); }, 1200);
+}
+
+// ---- Realtime:協作即時同步 + 在線狀態 + 編輯中提示(用廣播/presence,免資料庫設定)----
+let tripChannel = null;
+export function joinTripChannel(tripId, me, handlers) {
+  leaveTripChannel();
+  const ch = supabase.channel('trip:' + tripId, { config: { presence: { key: me.id } } });
+  ch.on('broadcast', { event: 'changed' }, () => { if (handlers.onChanged) handlers.onChanged(); })
+    .on('broadcast', { event: 'editing' }, ({ payload }) => { if (handlers.onEditing) handlers.onEditing(payload); })
+    .on('presence', { event: 'sync' }, () => { if (handlers.onPresence) handlers.onPresence(ch.presenceState()); })
+    .subscribe((status) => { if (status === 'SUBSCRIBED') ch.track({ id: me.id, nickname: me.nickname }); });
+  tripChannel = ch;
+}
+export function leaveTripChannel() {
+  if (tripChannel) { try { supabase.removeChannel(tripChannel); } catch (_) {} tripChannel = null; }
+}
+export function broadcastChanged() {
+  if (tripChannel) tripChannel.send({ type: 'broadcast', event: 'changed', payload: {} });
+}
+export function broadcastEditing(id, placeId, nickname) {
+  if (tripChannel) tripChannel.send({ type: 'broadcast', event: 'editing', payload: { id, placeId, nickname } });
 }
 
 // ---- 初始化(app.js 啟動時呼叫)---------------------------------------------

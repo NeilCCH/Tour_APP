@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v22'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v23'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -100,8 +100,48 @@ function canAccess(trip) {
     && (trip.ownerId === currentUser.id || (trip.members || []).includes(currentUser.id));
 }
 
+// ---- 協作即時狀態(Realtime)------------------------------------------------
+let joinedTripId = null;
+let presencePeers = [];   // 目前也在這趟的其他人 [{id,nickname}]
+let editingBy = {};       // userId -> { placeId, nickname }:誰正在編輯哪個地點
+
+function ensureTripPresence(tripId) {
+  if (!cloud || !cloud.joinTripChannel || !currentUser) return;
+  if (joinedTripId === tripId) return;
+  leaveTripPresence();
+  joinedTripId = tripId; presencePeers = []; editingBy = {};
+  cloud.joinTripChannel(tripId, { id: currentUser.id, nickname: displayName() }, {
+    onChanged: () => { cloud.fullSync().then(() => render()).catch(() => {}); },
+    onPresence: (state) => {
+      const peers = [], ids = new Set();
+      Object.values(state || {}).forEach((arr) => arr.forEach((p) => {
+        ids.add(p.id);
+        if (p.id !== currentUser.id) peers.push(p);
+      }));
+      presencePeers = peers;
+      for (const uid of Object.keys(editingBy)) if (!ids.has(uid)) delete editingBy[uid]; // 離線者清掉編輯中
+      render();
+    },
+    onEditing: (p) => {
+      if (!p || p.id === currentUser.id) return;
+      if (p.placeId) editingBy[p.id] = { placeId: p.placeId, nickname: p.nickname };
+      else delete editingBy[p.id];
+      render();
+    },
+  });
+}
+function leaveTripPresence() {
+  if (cloud && cloud.leaveTripChannel) cloud.leaveTripChannel();
+  joinedTripId = null; presencePeers = []; editingBy = {};
+}
+function editingNames(placeId) {
+  return Object.values(editingBy).filter((e) => e.placeId === placeId).map((e) => e.nickname || '協作者');
+}
+
 async function render() {
   const r = parseRoute();
+  // 離開某趟行程時,退出它的即時協作頻道
+  if (joinedTripId && !(r.view === 'trip' && r.tripId === joinedTripId)) leaveTripPresence();
   // 公開分享頁:任何人(含未登入)都能唯讀檢視
   if (r.view === 'share') { await renderSharedTrip(r.tripId); return; }
   // 加入協作:需登入,加入後導向該行程
@@ -321,12 +361,14 @@ function legHtml(a, b) {
 
 function sightCard(p, i, n) {
   const bits = placeMetaBits(p);
+  const editing = editingNames(p.id);
   return `
     <div class="card itin" data-move="${esc(p.id)}">
       <div class="itin-main">
         <h3>${p.pinned ? `<span class="pin-badge">${ic('pushpin')}</span>` : ''}${esc(p.name)}
           ${catTag(p.category)}</h3>
         ${bits.length ? `<div class="meta">${bits.join(' ・ ')}</div>` : ''}
+        ${editing.length ? `<div class="editing">${esc(editing.join('、'))} 編輯中…</div>` : ''}
       </div>
       <div class="reorder">
         <button data-up="${esc(p.id)}" ${i === 0 ? 'disabled' : ''}>▲</button>
@@ -432,10 +474,15 @@ function planBody(trip, places, dayCount) {
 
 async function renderTrip(trip) {
   setHeader(trip.name, true);
+  ensureTripPresence(trip.id); // 加入即時協作頻道(在線狀態/即時同步/編輯中提示)
   const places = await db.listPlaces(trip.id);
   const dayCount = tripDayCount(trip, places);
 
-  const head = `
+  const presenceBar = presencePeers.length
+    ? `<div class="presence">${esc(presencePeers.map((p) => p.nickname || '協作者').join('、'))} 也在這趟</div>`
+    : '';
+
+  const head = presenceBar + `
     <div class="trip-hero">
       <div class="dates">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
       <div class="stats">
@@ -895,7 +942,13 @@ function openPlaceSheet(tripId, place = null) {
       ${editing ? '<button class="btn danger" id="f-del">刪除這個地點</button>' : ''}
       <button class="btn ghost" id="f-cancel">取消</button>
     </div>
-  `, (sheet, close) => {
+  `, (sheet, rawClose) => {
+    // 廣播「正在編輯這個地點」給協作者;關閉時清除
+    if (editing && cloud && cloud.broadcastEditing) cloud.broadcastEditing(currentUser?.id, place.id, displayName());
+    const close = () => {
+      if (editing && cloud && cloud.broadcastEditing) cloud.broadcastEditing(currentUser?.id, null);
+      rawClose();
+    };
     // 單選 chips（分類、狀態）
     const bindSingle = (id) => {
       const box = sheet.querySelector(id);

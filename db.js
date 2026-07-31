@@ -90,6 +90,13 @@ function notify() { try { _onChange && _onChange(); } catch (_) {} }
 
 const active = (rows) => rows.filter((r) => !r.deleted);
 
+// 欄位級時間戳:記下「哪些欄位在何時被改」,供同步時逐欄位取較新者(避免整筆覆蓋)
+function withFts(record, changedKeys, now) {
+  const fts = { ...(record.fts || {}) };
+  for (const k of changedKeys) fts[k] = now;
+  return { ...record, fts, updatedAt: now };
+}
+
 // ---- Trip ------------------------------------------------------------------
 async function createTrip({ name, startDate = '', endDate = '', people = 1, ownerId = null }) {
   const now = Date.now();
@@ -100,6 +107,7 @@ async function createTrip({ name, startDate = '', endDate = '', people = 1, owne
     members: [],                    // 協作者的 uid 清單(擁有者不列在內)
     inviteCode: '',                 // 邀請碼(產生邀請連結時才填)
     public: false,                  // 是否開放公開分享(唯讀)
+    fts: {},                        // 欄位級修改時間
     createdAt: now, updatedAt: now, deleted: false,
   };
   await put('trips', trip); notify(); return trip;
@@ -118,7 +126,7 @@ async function getTrip(id) {
 async function updateTrip(id, patch) {
   const trip = await get('trips', id);
   if (!trip) throw new Error('找不到旅程');
-  const next = { ...trip, ...patch, updatedAt: Date.now() };
+  const next = withFts({ ...trip, ...patch }, Object.keys(patch), Date.now());
   await put('trips', next); notify(); return next;
 }
 // 刪除旅程：軟刪除，並連同底下 Place、Moment 一併軟刪除（讓刪除能同步）
@@ -127,11 +135,11 @@ async function deleteTrip(id) {
   const places = await getByIndex('places', 'tripId', id);
   for (const p of places) {
     const moments = await getByIndex('moments', 'placeId', p.id);
-    for (const m of moments) await put('moments', { ...m, deleted: true, updatedAt: now });
-    await put('places', { ...p, deleted: true, updatedAt: now });
+    for (const m of moments) await put('moments', withFts({ ...m, deleted: true }, ['deleted'], now));
+    await put('places', withFts({ ...p, deleted: true }, ['deleted'], now));
   }
   const trip = await get('trips', id);
-  if (trip) await put('trips', { ...trip, deleted: true, updatedAt: now });
+  if (trip) await put('trips', withFts({ ...trip, deleted: true }, ['deleted'], now));
   notify();
 }
 
@@ -153,6 +161,7 @@ async function createPlace(tripId, data) {
     pinned: !!data.pinned,
     assignedDay: data.assignedDay ?? null, orderIndex: data.orderIndex ?? null,
     providerIds: data.providerIds || {},
+    fts: {},
     createdAt: now, updatedAt: now, deleted: false,
   };
   // 若這趟已開放公開分享,新地點也沿用公開狀態(才會出現在分享頁)
@@ -167,12 +176,12 @@ async function setTripPublic(tripId, isPublic) {
   const flag = !!isPublic;
   const trip = await get('trips', tripId);
   if (!trip) return;
-  await put('trips', { ...trip, public: flag, updatedAt: now });
+  await put('trips', withFts({ ...trip, public: flag }, ['public'], now));
   const places = await getByIndex('places', 'tripId', tripId);
   for (const p of places) {
-    await put('places', { ...p, public: flag, updatedAt: now });
+    await put('places', withFts({ ...p, public: flag }, ['public'], now));
     const moments = await getByIndex('moments', 'placeId', p.id);
-    for (const m of moments) await put('moments', { ...m, public: flag, updatedAt: now });
+    for (const m of moments) await put('moments', withFts({ ...m, public: flag }, ['public'], now));
   }
   notify();
 }
@@ -186,15 +195,15 @@ async function getPlace(id) {
 async function updatePlace(id, patch) {
   const place = await get('places', id);
   if (!place) throw new Error('找不到地點');
-  const next = { ...place, ...patch, updatedAt: Date.now() };
+  const next = withFts({ ...place, ...patch }, Object.keys(patch), Date.now());
   await put('places', next); notify(); return next;
 }
 async function deletePlace(id) {
   const now = Date.now();
   const moments = await getByIndex('moments', 'placeId', id);
-  for (const m of moments) await put('moments', { ...m, deleted: true, updatedAt: now });
+  for (const m of moments) await put('moments', withFts({ ...m, deleted: true }, ['deleted'], now));
   const place = await get('places', id);
-  if (place) await put('places', { ...place, deleted: true, updatedAt: now });
+  if (place) await put('places', withFts({ ...place, deleted: true }, ['deleted'], now));
   notify();
 }
 
