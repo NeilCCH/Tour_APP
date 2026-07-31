@@ -10,9 +10,9 @@
 // ---------------------------------------------------------------------------
 
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
-import { geocode, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
+import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v25'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v26'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -76,6 +76,23 @@ let currentUser = localStorage.getItem('authUserId')
   : null;
 let nickname = localStorage.getItem('authNickname') || '';
 const displayName = () => nickname || (currentUser?.email ? currentUser.email.split('@')[0] : '');
+
+// 其他使用者的暱稱快取(顯示發起人/協作者名稱)
+const profileCache = {};
+async function ensureNames(ids) {
+  const missing = ids.filter((id) => id && !(id in profileCache));
+  if (!missing.length || !cloud || !cloud.getProfiles) return;
+  missing.forEach((id) => { profileCache[id] = profileCache[id] || null; }); // 佔位避免重覆抓
+  const profs = await cloud.getProfiles(missing).catch(() => []);
+  profs.forEach((p) => { profileCache[p.id] = p; });
+  render();
+}
+function nameFor(id) {
+  if (!id) return '';
+  if (id === currentUser?.id) return displayName();
+  const p = profileCache[id];
+  return p ? (p.nickname || p.email || '協作者') : '協作者';
+}
 
 function setHeader(title, showBack) {
   header.classList.toggle('has-back', !!showBack);
@@ -475,6 +492,7 @@ function planBody(trip, places, dayCount) {
 async function renderTrip(trip) {
   setHeader(trip.name, true);
   ensureTripPresence(trip.id); // 加入即時協作頻道(在線狀態/即時同步/編輯中提示)
+  ensureNames([trip.ownerId, ...(trip.members || [])]); // 抓發起人/協作者暱稱
   const places = await db.listPlaces(trip.id);
   const dayCount = tripDayCount(trip, places);
 
@@ -485,6 +503,7 @@ async function renderTrip(trip) {
   const head = presenceBar + `
     <div class="trip-hero">
       <div class="dates">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
+      <div class="owner-line">發起人:${esc(nameFor(trip.ownerId))}${trip.ownerId === currentUser.id ? '（你）' : '　・你是協作者'}</div>
       <div class="stats">
         <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
         <div class="stat" style="--c:#14b8a6"><div class="v">${trip.people}</div><div class="l">人</div></div>
@@ -830,7 +849,7 @@ function openTripSheet(trip = null, focusShare = false) {
     <div id="f-members" class="meta" style="margin-bottom:1rem">—</div>` : ''}
     <div class="btn-row">
       <button class="btn primary" id="f-save">${editing ? '儲存' : '建立旅程'}</button>
-      ${editing ? '<button class="btn danger" id="f-del">刪除這趟旅程</button>' : ''}
+      ${editing && trip.ownerId === currentUser?.id ? '<button class="btn danger" id="f-del">刪除這趟旅程</button>' : ''}
       <button class="btn ghost" id="f-cancel">取消</button>
     </div>
   `, (sheet, close) => {
@@ -932,7 +951,8 @@ function openTripSheet(trip = null, focusShare = false) {
       else { const t = await db.createTrip({ ...data, ownerId: currentUser?.id }); location.hash = `#/trip/${t.id}`; }
       close(); render();
     };
-    if (editing) sheet.querySelector('#f-del').onclick = async () => {
+    const delBtn = editing ? sheet.querySelector('#f-del') : null; // 只有發起人有這顆
+    if (delBtn) delBtn.onclick = async () => {
       if (!confirm(`確定刪除「${trip.name}」？底下所有地點與記錄都會一起刪除，無法復原。`)) return;
       await db.deleteTrip(trip.id);
       close(); location.hash = '';
@@ -955,7 +975,8 @@ function openPlaceSheet(tripId, place = null) {
       <div style="display:flex;gap:8px;align-items:center">
         <button type="button" class="chip" id="f-locate">${ic('pin')} 用名稱定位</button>
         <span class="meta" id="f-loc" style="flex:1;min-width:0"></span>
-      </div></label>
+      </div>
+      <div id="f-cands" class="cands"></div></label>
 
     <label class="field"><span class="lab">分類</span>
       <div class="chips" id="f-cat">
@@ -1012,19 +1033,29 @@ function openPlaceSheet(tripId, place = null) {
     };
     bindSingle('#f-cat'); bindSingle('#f-status');
 
-    // 定位（用名稱查座標,給「建議安排」用）
+    // 定位（用名稱查座標,列出候選讓使用者挑,精準度較高）
     let coords = (place && place.lat != null && place.lng != null) ? { lat: place.lat, lng: place.lng } : null;
     const locEl = sheet.querySelector('#f-loc');
+    const candBox = sheet.querySelector('#f-cands');
     if (coords) locEl.textContent = `已定位 ✓ (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
     sheet.querySelector('#f-locate').onclick = async () => {
       const q = sheet.querySelector('#f-name').value.trim();
+      candBox.innerHTML = '';
       if (!q) { locEl.textContent = '請先輸入地點名稱'; return; }
       locEl.textContent = '查詢中…（免費服務,約 1 秒）';
       try {
-        const r = await geocode(q);
-        if (!r) { coords = null; locEl.textContent = '找不到,試更完整的名稱(例如「清水寺 京都」)'; return; }
-        coords = { lat: r.lat, lng: r.lng };
-        locEl.textContent = '已定位 ✓ ' + r.label.split(',').slice(0, 3).join(',');
+        const list = await geocodeCandidates(q);
+        if (!list.length) { locEl.textContent = '找不到,試更完整的名稱(例如「清水寺 京都」)'; return; }
+        locEl.textContent = `找到 ${list.length} 個,點選正確的那個:`;
+        candBox.innerHTML = list.map((r, i) =>
+          `<button type="button" class="cand" data-i="${i}">${esc(r.label)}</button>`).join('');
+        candBox.querySelectorAll('.cand').forEach((b) => b.onclick = () => {
+          const r = list[Number(b.dataset.i)];
+          coords = { lat: r.lat, lng: r.lng };
+          locEl.textContent = '已選:' + r.label.split(',').slice(0, 3).join(',');
+          candBox.querySelectorAll('.cand').forEach((x) => x.classList.remove('on'));
+          b.classList.add('on');
+        });
       } catch (e) { locEl.textContent = '定位失敗:' + (e.message || e); }
     };
 
@@ -1146,8 +1177,9 @@ function updateAcct() {
 }
 
 // 更新登入者(供把關與依使用者過濾),並記到 localStorage 讓重開/離線也記得
-function setAuthUser(user) {
+function setAuthUser(user, event) {
   cloudUser = user;
+  if (event === 'PASSWORD_RECOVERY') { setTimeout(openResetPasswordSheet, 100); } // 忘記密碼回連
   if (user) {
     currentUser = { id: user.id, email: user.email || '' };
     localStorage.setItem('authUserId', user.id);
@@ -1161,7 +1193,8 @@ function setAuthUser(user) {
     nickname = localStorage.getItem('authNickname') || '';
     if (cloud) cloud.getMyProfile().then((p) => {
       if (p && p.nickname) { nickname = p.nickname; localStorage.setItem('authNickname', nickname); updateAcct(); render(); }
-      else if (nickname) cloud.saveProfile(nickname).catch(() => {}); // 本地有暱稱、雲端還沒有 → 補寫
+      // 一律確保雲端有 profile(含 email),否則別人用 email 邀請時會查不到你
+      cloud.saveProfile(nickname || (user.email ? user.email.split('@')[0] : '')).catch(() => {});
     }).catch(() => {});
     refreshInvites(); // 載入待處理的邀請通知
   } else {
@@ -1174,6 +1207,34 @@ function setAuthUser(user) {
   updateNotif();
   updateAcct();
   render();
+}
+
+// 忘記密碼回連後:設定新密碼
+function openResetPasswordSheet() {
+  if (!cloud) return;
+  openSheet(`
+    <h2>設定新密碼</h2>
+    <p class="meta" style="margin-bottom:14px">輸入新的密碼(至少 6 碼),之後用新密碼登入。</p>
+    <label class="field"><span class="lab">新密碼</span>
+      <input id="rp-pw" type="password" autocomplete="new-password" placeholder="至少 6 碼"></label>
+    <div id="rp-msg" class="meta" style="min-height:1.1em"></div>
+    <div class="btn-row">
+      <button class="btn primary" id="rp-save">更新密碼</button>
+      <button class="btn ghost" id="rp-cancel">稍後</button>
+    </div>
+  `, (sheet, close) => {
+    const msg = sheet.querySelector('#rp-msg');
+    sheet.querySelector('#rp-cancel').onclick = close;
+    sheet.querySelector('#rp-save').onclick = async () => {
+      const pw = sheet.querySelector('#rp-pw').value;
+      if (pw.length < 6) { msg.style.color = 'var(--danger)'; msg.textContent = '密碼至少 6 碼'; return; }
+      msg.style.color = 'var(--text-dim)'; msg.textContent = '更新中…';
+      const { error } = await cloud.updatePassword(pw);
+      if (error) { msg.style.color = 'var(--danger)'; msg.textContent = '更新失敗:' + error.message; return; }
+      msg.style.color = 'var(--accent)'; msg.textContent = '密碼已更新!';
+      setTimeout(close, 1200);
+    };
+  });
 }
 
 async function initCloud() {
@@ -1243,12 +1304,21 @@ function openAuthSheet() {
     <div class="btn-row">
       <button class="btn primary" id="a-login">登入</button>
       <button class="btn ghost" id="a-signup">第一次使用,註冊新帳號</button>
+      <button class="btn ghost" id="a-forgot">忘記密碼?</button>
       <button class="btn ghost" id="a-cancel">取消</button>
     </div>`, (sheet, close) => {
     const msg = sheet.querySelector('#a-msg');
     const vals = () => [sheet.querySelector('#a-email').value.trim(), sheet.querySelector('#a-pass').value];
     const fail = (t) => { msg.style.color = 'var(--danger)'; msg.textContent = t; };
     sheet.querySelector('#a-cancel').onclick = close;
+    sheet.querySelector('#a-forgot').onclick = async () => {
+      const [email] = vals();
+      if (!email) return fail('請先在上面輸入你的 Email');
+      msg.style.color = 'var(--text-dim)'; msg.textContent = '寄送重設信中…';
+      const { error } = await cloud.resetPassword(email);
+      if (error) return fail('寄送失敗:' + error.message);
+      msg.style.color = 'var(--accent)'; msg.textContent = '重設密碼的信已寄出,請到 Email 點連結後回來設定新密碼。';
+    };
     sheet.querySelector('#a-login').onclick = async () => {
       const [email, pass] = vals();
       msg.style.color = 'var(--text-dim)'; msg.textContent = '登入中…';

@@ -259,6 +259,11 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .toggle-row .desc { font-size: .82rem; color: var(--text-dim); margin-top: .15rem; }
 .sharelink { display: flex; gap: .5rem; align-items: center; margin-bottom: 1rem; }
 .sharelink input { font-size: .82rem; }
+.cands { display: flex; flex-direction: column; gap: .35rem; margin-top: .5rem; }
+.cand { text-align: left; padding: .5rem .7rem; border: 1.5px solid var(--border); border-radius: 10px;
+  background: var(--card); color: var(--text); font-size: .9rem; cursor: pointer; font-family: inherit; }
+.cand.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--accent); }
+.owner-line { font-size: .95rem; color: var(--text-dim); font-weight: 600; margin-top: .3rem; }
 
 /* ---- 按鈕 ---- */
 .btn {

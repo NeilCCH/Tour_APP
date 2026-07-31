@@ -13,8 +13,13 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
 import { db, onDbChange } from './db.js';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }, // 處理忘記密碼的回連
 });
+
+// ---- 忘記密碼 --------------------------------------------------------------
+export const resetPassword = (email) =>
+  supabase.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+export const updatePassword = (newPassword) => supabase.auth.updateUser({ password: newPassword });
 
 // ---- 狀態回報(讓畫面顯示「同步中/已同步/錯誤」)-----------------------------
 let statusCb = null;
@@ -54,8 +59,9 @@ export async function getMyProfile() {
   return data || null;
 }
 export async function findProfileByEmail(email) {
-  const { data } = await supabase.from('profiles').select('id,nickname,email').eq('email', email).maybeSingle();
-  return data || null;
+  // 大小寫不敏感,避免因大小寫不同而找不到人
+  const { data } = await supabase.from('profiles').select('id,nickname,email').ilike('email', email).limit(1);
+  return (data && data[0]) || null;
 }
 export async function getProfiles(ids) {
   if (!ids || !ids.length) return [];
@@ -198,8 +204,8 @@ export function broadcastEditing(id, placeId, nickname) {
 // ---- 初始化(app.js 啟動時呼叫)---------------------------------------------
 export async function initAuth(onAuthChange) {
   onDbChange(schedulePush);                        // 本地變動 → 排程推送
-  supabase.auth.onAuthStateChange((_event, session) => {
-    onAuthChange(session?.user || null);
+  supabase.auth.onAuthStateChange((event, session) => {
+    onAuthChange(session?.user || null, event); // event 例如 PASSWORD_RECOVERY
     if (session?.user) fullSync().catch(() => {}); // 登入後立刻同步
   });
   window.addEventListener('online', () => { fullSync().catch(() => {}); }); // 恢復連線 → 同步

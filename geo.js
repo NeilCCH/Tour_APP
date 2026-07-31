@@ -134,12 +134,16 @@ export function orderClusters(clusters) {
 
 // 依名稱查座標（Nominatim,免費;公用伺服器限每秒 1 次,故只在使用者手動按時呼叫）
 export async function geocode(query) {
-  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1'
+  const list = await geocodeCandidates(query);
+  return list[0] || null;
+}
+
+// 回傳多個候選(讓使用者從中挑正確的那個,改善精準度)
+export async function geocodeCandidates(query) {
+  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=1'
     + '&accept-language=zh-TW&q=' + encodeURIComponent(query);
   const res = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error('查詢失敗（HTTP ' + res.status + '）');
   const arr = await res.json();
-  if (!arr.length) return null;
-  const r = arr[0];
-  return { lat: parseFloat(r.lat), lng: parseFloat(r.lon), label: r.display_name };
+  return arr.map((r) => ({ lat: parseFloat(r.lat), lng: parseFloat(r.lon), label: r.display_name }));
 }
