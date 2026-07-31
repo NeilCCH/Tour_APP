@@ -139,9 +139,11 @@ export async function geocode(query) {
 }
 
 // 回傳多個候選(讓使用者從中挑正確的那個,改善精準度)
-export async function geocodeCandidates(query) {
-  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=1'
+// country:主要旅遊國家 ISO 兩碼(如 'KR'),有給就把搜尋限定在該國,避免搜到別國同名地點。
+export async function geocodeCandidates(query, country = '') {
+  let url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=1'
     + '&accept-language=zh-TW&q=' + encodeURIComponent(query);
+  if (country && /^[A-Za-z]{2}$/.test(country)) url += '&countrycodes=' + country.toLowerCase();
   const res = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error('查詢失敗（HTTP ' + res.status + '）');
   const arr = await res.json();

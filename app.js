@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v37'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v38'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -66,6 +66,27 @@ function loadLeaflet() {
 const MODE_COLORS = { walk: '#22b34a', bus: '#f97316', metro: '#8b5cf6', car: '#3b82f6' };
 const CATEGORY_COLORS = { 景點: '#22b34a', 美食: '#f97316', 住宿: '#8b5cf6', 交通: '#3b82f6', 購物: '#ec4899', 其他: '#94a3b8' };
 const catTag = (c) => `<span class="tag cat" style="--c:${CATEGORY_COLORS[c] || '#64748b'}">${esc(c)}</span>`;
+
+// ---- 主要旅遊國家:供國旗顯示 + 定位搜尋限定國別 ----------------------------
+// code 是 ISO 3166-1 兩碼(Nominatim 的 countrycodes 也用它)。常見旅遊目的地。
+const COUNTRIES = [
+  { code: 'JP', name: '日本' }, { code: 'KR', name: '韓國' }, { code: 'TW', name: '台灣' },
+  { code: 'CN', name: '中國' }, { code: 'HK', name: '香港' }, { code: 'MO', name: '澳門' },
+  { code: 'TH', name: '泰國' }, { code: 'VN', name: '越南' }, { code: 'SG', name: '新加坡' },
+  { code: 'MY', name: '馬來西亞' }, { code: 'ID', name: '印尼' }, { code: 'PH', name: '菲律賓' },
+  { code: 'KH', name: '柬埔寨' }, { code: 'IN', name: '印度' }, { code: 'AE', name: '阿聯(杜拜)' },
+  { code: 'TR', name: '土耳其' }, { code: 'US', name: '美國' }, { code: 'CA', name: '加拿大' },
+  { code: 'GB', name: '英國' }, { code: 'FR', name: '法國' }, { code: 'DE', name: '德國' },
+  { code: 'IT', name: '義大利' }, { code: 'ES', name: '西班牙' }, { code: 'CH', name: '瑞士' },
+  { code: 'NL', name: '荷蘭' }, { code: 'AT', name: '奧地利' }, { code: 'CZ', name: '捷克' },
+  { code: 'AU', name: '澳洲' }, { code: 'NZ', name: '紐西蘭' }, { code: 'EG', name: '埃及' },
+];
+const countryName = (code) => COUNTRIES.find((c) => c.code === code)?.name || '';
+// ISO 兩碼 → 國旗 emoji(用區域指示符號組成;iOS 會顯示成真正的旗子)
+function flagOf(code) {
+  if (!code || !/^[A-Za-z]{2}$/.test(code)) return '';
+  return String.fromCodePoint(...[...code.toUpperCase()].map((ch) => 0x1F1E6 + ch.charCodeAt(0) - 65));
+}
 
 function fmtDateRange(a, b) {
   if (!a && !b) return '尚未設定日期';
@@ -316,6 +337,7 @@ async function renderHome() {
     const counts = await Promise.all(trips.map((t) => db.listPlaces(t.id).then((p) => p.length)));
     app.innerHTML = greeting + trips.map((t, i) => `
       <div class="card trip" data-trip="${esc(t.id)}" style="--tc:${dayColor(i + 1)}">
+        ${t.country ? `<span class="flag" title="${esc(countryName(t.country))}">${flagOf(t.country)}</span>` : ''}
         <h3>${esc(t.name)}${t.ownerId !== currentUser.id ? ' <span class="tag">協作</span>' : ''}</h3>
         <div class="meta">${esc(fmtDateRange(t.startDate, t.endDate))} ・ ${t.people} 人 ・ ${counts[i]} 個地點</div>
       </div>`).join('');
@@ -864,6 +886,11 @@ function openTripSheet(trip = null, focusShare = false) {
     </div>
     <label class="field"><span class="lab">人數</span>
       <input id="f-people" type="number" min="1" inputmode="numeric" value="${esc(trip?.people || 1)}"></label>
+    <label class="field"><span class="lab">主要旅遊國家（顯示國旗,並讓找地點更準)</span>
+      <select id="f-country" class="select">
+        <option value="">未設定</option>
+        ${COUNTRIES.map((c) => `<option value="${c.code}" ${trip?.country === c.code ? 'selected' : ''}>${flagOf(c.code)} ${esc(c.name)}</option>`).join('')}
+      </select></label>
     ${editing ? `
     <div class="section-title" id="share-anchor" style="margin-top:1rem">分享與協作</div>
     <div class="toggle-row">
@@ -989,6 +1016,7 @@ function openTripSheet(trip = null, focusShare = false) {
         startDate: sheet.querySelector('#f-start').value,
         endDate: sheet.querySelector('#f-end').value,
         people: sheet.querySelector('#f-people').value,
+        country: sheet.querySelector('#f-country').value,
       };
       if (!data.name) { sheet.querySelector('#f-name').focus(); return; }
       if (editing) await db.updateTrip(trip.id, data);
@@ -1092,9 +1120,13 @@ function openPlaceSheet(tripId, place = null) {
       if (!q) { locEl.textContent = '請先輸入地點名稱'; return; }
       locEl.textContent = '查詢中…（免費服務,約 1 秒）';
       try {
-        const list = await geocodeCandidates(q);
+        const country = (await db.getTrip(tripId))?.country || '';
+        let list = await geocodeCandidates(q, country);       // 先限定在主要旅遊國家
+        if (!list.length && country) list = await geocodeCandidates(q); // 該國找不到,再全球找
         if (!list.length) { locEl.textContent = '找不到,試更完整的名稱(例如「清水寺 京都」)'; return; }
-        locEl.textContent = `找到 ${list.length} 個,點選正確的那個:`;
+        locEl.textContent = country
+          ? `找到 ${list.length} 個(已優先${countryName(country)}),點選正確的那個:`
+          : `找到 ${list.length} 個,點選正確的那個:`;
         candBox.innerHTML = list.map((r, i) =>
           `<button type="button" class="cand" data-i="${i}">${esc(r.label)}</button>`).join('');
         candBox.querySelectorAll('.cand').forEach((b) => b.onclick = () => {

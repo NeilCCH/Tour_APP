@@ -95,11 +95,15 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
 
 /* ---- 卡片 ---- */
 .card {
+  position: relative;
   background: var(--card); border-radius: var(--radius);
   box-shadow: var(--shadow); border: 1px solid var(--border);
   padding: 1.1rem; margin-bottom: .8rem; cursor: pointer;
   transition: transform .08s ease, background .12s ease;
 }
+.card .flag { position: absolute; top: .9rem; right: 1.1rem; font-size: 2rem; line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
+.card.trip h3 { padding-right: 2.6rem; } /* 留位子給右上角國旗 */
 .card:active { transform: scale(.985); }
 .card h3 { font-size: 1.18rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .card .meta { color: var(--text-dim); font-size: .98rem; margin-top: .35rem; }

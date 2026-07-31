@@ -98,11 +98,12 @@ function withFts(record, changedKeys, now) {
 }
 
 // ---- Trip ------------------------------------------------------------------
-async function createTrip({ name, startDate = '', endDate = '', people = 1, ownerId = null }) {
+async function createTrip({ name, startDate = '', endDate = '', people = 1, country = '', ownerId = null }) {
   const now = Date.now();
   const trip = {
     id: newId(), name: (name || '未命名旅程').trim(),
     startDate, endDate, people: Number(people) || 1,
+    country,                        // 主要旅遊國家(ISO 兩碼,如 'KR'):供國旗顯示與定位過濾
     ownerId,                        // 這趟的擁有者(登入者 id);列表依此過濾
     members: [],                    // 協作者的 uid 清單(擁有者不列在內)
     inviteCode: '',                 // 邀請碼(產生邀請連結時才填)
