@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v28'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v29'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -424,7 +424,7 @@ function shade(hex) { // 把顏色調暗一點,給漸層用
   const f = 0.72;
   return `rgb(${Math.round(((n >> 16) & 255) * f)},${Math.round(((n >> 8) & 255) * f)},${Math.round((n & 255) * f)})`;
 }
-let planDay = 1; // 「行程」分頁目前看哪一天(數字) 或 'pool'
+let planDay = 'pool'; // 「行程」分頁預設先看「候選」;之後可切到某天(數字)
 
 function poolCard(p) {
   const hint = p.category === '住宿' ? '點一下 → 設為某天的出發/回程點' : '點一下 → 排進某一天';
