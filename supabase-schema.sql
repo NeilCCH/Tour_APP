@@ -70,3 +70,52 @@ drop policy if exists "public read moments" on public.moments;
 create policy "public read trips"   on public.trips   for select using ((data->>'public')::boolean is true);
 create policy "public read places"  on public.places  for select using ((data->>'public')::boolean is true);
 create policy "public read moments" on public.moments for select using ((data->>'public')::boolean is true);
+
+-- ===========================================================================
+-- 邀請協作(共同編輯):協作者的 uid 存在 trips.data.members 陣列。
+-- 成員可讀寫「自己是成員」的行程與其地點/Moment;加入動作由 RPC 憑邀請碼完成。
+-- ===========================================================================
+
+-- 成員可讀寫自己是成員的行程
+drop policy if exists "member trips" on public.trips;
+create policy "member trips" on public.trips for all
+  using  (coalesce(data->'members', '[]'::jsonb) ? auth.uid()::text)
+  with check (coalesce(data->'members', '[]'::jsonb) ? auth.uid()::text);
+
+-- 只要能存取所屬行程(擁有者或成員),就能讀寫其地點
+drop policy if exists "trip access places" on public.places;
+create policy "trip access places" on public.places for all
+  using (exists (select 1 from public.trips t
+    where t.id = (places.data->>'tripId')::uuid
+      and (t.user_id = auth.uid() or coalesce(t.data->'members','[]'::jsonb) ? auth.uid()::text)))
+  with check (exists (select 1 from public.trips t
+    where t.id = (places.data->>'tripId')::uuid
+      and (t.user_id = auth.uid() or coalesce(t.data->'members','[]'::jsonb) ? auth.uid()::text)));
+
+drop policy if exists "trip access moments" on public.moments;
+create policy "trip access moments" on public.moments for all
+  using (exists (select 1 from public.trips t
+    where t.id = (moments.data->>'tripId')::uuid
+      and (t.user_id = auth.uid() or coalesce(t.data->'members','[]'::jsonb) ? auth.uid()::text)))
+  with check (exists (select 1 from public.trips t
+    where t.id = (moments.data->>'tripId')::uuid
+      and (t.user_id = auth.uid() or coalesce(t.data->'members','[]'::jsonb) ? auth.uid()::text)));
+
+-- 加入協作的 RPC:憑邀請碼把自己加進 members(SECURITY DEFINER,安全把關)
+create or replace function public.join_trip(p_trip_id uuid, p_code text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  if p_code = '' or not exists (
+      select 1 from public.trips t where t.id = p_trip_id and t.data->>'inviteCode' = p_code
+  ) then
+    raise exception 'invalid invite';
+  end if;
+  update public.trips
+     set data = jsonb_set(data, '{members}',
+                  coalesce(data->'members', '[]'::jsonb) || to_jsonb(auth.uid()::text)),
+         updated_at = (extract(epoch from now()) * 1000)::bigint
+   where id = p_trip_id
+     and not (coalesce(data->'members', '[]'::jsonb) ? auth.uid()::text);
+end; $$;
+grant execute on function public.join_trip(uuid, text) to authenticated;

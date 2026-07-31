@@ -82,6 +82,8 @@ function setHeader(title, showBack) {
 // ---- 路由 ------------------------------------------------------------------
 function parseRoute() {
   const h = location.hash.replace(/^#/, '');
+  const jm = h.match(/^\/join\/([^/]+)\/(.+)$/);
+  if (jm) return { view: 'join', tripId: jm[1], code: jm[2] };
   const sm = h.match(/^\/share\/(.+)$/);
   if (sm) return { view: 'share', tripId: sm[1] };
   const m = h.match(/^\/trip\/(.+)$/);
@@ -89,16 +91,24 @@ function parseRoute() {
   return { view: 'home' };
 }
 
+// 我是否能存取這趟(擁有者或協作成員)
+function canAccess(trip) {
+  return !!trip && currentUser
+    && (trip.ownerId === currentUser.id || (trip.members || []).includes(currentUser.id));
+}
+
 async function render() {
   const r = parseRoute();
   // 公開分享頁:任何人(含未登入)都能唯讀檢視
   if (r.view === 'share') { await renderSharedTrip(r.tripId); return; }
+  // 加入協作:需登入,加入後導向該行程
+  if (r.view === 'join') { await renderJoin(r.tripId, r.code); return; }
   // 未登入:一律顯示登入畫面,看不到任何行程
   if (!currentUser) { renderLoginGate(); return; }
   if (r.view === 'trip') {
     const trip = await db.getTrip(r.tripId);
-    // 找不到,或不是自己的行程 → 回首頁(避免用網址看到別人的行程)
-    if (!trip || (trip.ownerId && trip.ownerId !== currentUser.id)) { location.hash = ''; return; }
+    // 找不到,或不是我能存取的行程(非擁有者也非協作者)→ 回首頁
+    if (!trip || !canAccess(trip)) { location.hash = ''; return; }
     await renderTrip(trip);
   } else {
     await renderHome();
@@ -180,6 +190,35 @@ function sharedView(trip, places) {
     });
   }
   return html;
+}
+
+// 加入協作:憑邀請連結把自己加入該行程,成功後導向行程
+async function renderJoin(tripId, code) {
+  setHeader('加入協作', false);
+  setFab(null);
+  if (!currentUser) {
+    app.innerHTML = `
+      <div class="empty">
+        <div class="big">${ic('link')}</div>
+        <p><b>你被邀請一起編輯行程</b><br>請先登入或註冊,再加入協作。</p>
+        <button class="btn primary" id="join-login" style="max-width:16rem;margin:1.2rem auto 0">登入 / 註冊</button>
+      </div>`;
+    app.querySelector('#join-login').onclick = openAuthSheet; // 登入後會重繪,回到本頁自動繼續
+    return;
+  }
+  app.innerHTML = `<div class="empty"><p>加入中…</p></div>`;
+  if (!cloud) { try { cloud = await import('./sync.js'); } catch (_) {} }
+  if (!cloud) { app.innerHTML = `<div class="empty"><p>無法載入(可能離線或被網路阻擋)。</p></div>`; return; }
+  const { error } = await cloud.joinTrip(tripId, code);
+  if (error) {
+    app.innerHTML = `<div class="empty"><div class="big">${ic('suitcase')}</div>
+      <p>加入失敗:${esc(error.message || '邀請連結無效或已失效')}</p>
+      <button class="btn ghost" id="join-home" style="max-width:16rem;margin:1rem auto 0">回首頁</button></div>`;
+    app.querySelector('#join-home').onclick = () => { location.hash = ''; };
+    return;
+  }
+  await cloud.fullSync().catch(() => {}); // 拉下這趟共享行程
+  location.hash = `#/trip/${tripId}`;
 }
 
 // ---- 首頁：旅程列表 --------------------------------------------------------
@@ -716,6 +755,16 @@ function openTripSheet(trip = null) {
       <input id="f-shareurl" readonly value="${esc(location.origin + location.pathname + '#/share/' + trip.id)}">
       <button type="button" class="btn ghost" id="f-copy" style="width:auto;padding:.6rem 1rem">複製</button>
     </div>` : ''}
+    ${editing && trip.ownerId === currentUser?.id ? `
+    <div class="toggle-row">
+      <div><b>邀請協作</b><div class="desc">產生連結,對方登入後可一起編輯${(trip.members || []).length ? `（目前 ${(trip.members || []).length} 位協作者）` : ''}</div></div>
+      <button type="button" class="chip" id="f-invite">${trip.inviteCode ? '重新產生' : '產生連結'}</button>
+    </div>
+    <div id="f-invitelink" class="sharelink" style="${trip.inviteCode ? '' : 'display:none'}">
+      <input id="f-inviteurl" readonly value="${trip.inviteCode ? esc(location.origin + location.pathname + '#/join/' + trip.id + '/' + trip.inviteCode) : ''}">
+      <button type="button" class="btn ghost" id="f-invitecopy" style="width:auto;padding:.6rem 1rem">複製</button>
+    </div>
+    ${(trip.members || []).length ? '<button type="button" class="btn ghost" id="f-stopcollab" style="margin-bottom:1rem">停止協作（移除所有協作者）</button>' : ''}` : ''}
     <div class="btn-row">
       <button class="btn primary" id="f-save">${editing ? '儲存' : '建立旅程'}</button>
       ${editing ? '<button class="btn danger" id="f-del">刪除這趟旅程</button>' : ''}
@@ -740,6 +789,34 @@ function openTripSheet(trip = null) {
           setTimeout(() => { sheet.querySelector('#f-copy').textContent = '複製'; }, 1500);
         }).catch(() => {});
       };
+
+      // 邀請協作(僅擁有者)
+      const inviteBtn = sheet.querySelector('#f-invite');
+      if (inviteBtn) {
+        const inviteBox = sheet.querySelector('#f-invitelink');
+        const inviteInput = sheet.querySelector('#f-inviteurl');
+        const linkFor = (code) => location.origin + location.pathname + '#/join/' + trip.id + '/' + code;
+        inviteBtn.onclick = async () => {
+          const code = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2)).slice(0, 12);
+          await db.updateTrip(trip.id, { inviteCode: code });
+          trip.inviteCode = code;
+          inviteInput.value = linkFor(code);
+          inviteBox.style.display = '';
+          inviteBtn.textContent = '重新產生';
+        };
+        sheet.querySelector('#f-invitecopy').onclick = () => {
+          navigator.clipboard?.writeText(inviteInput.value).then(() => {
+            const b = sheet.querySelector('#f-invitecopy'); b.textContent = '已複製';
+            setTimeout(() => { b.textContent = '複製'; }, 1500);
+          }).catch(() => {});
+        };
+        const stop = sheet.querySelector('#f-stopcollab');
+        if (stop) stop.onclick = async () => {
+          if (!confirm('確定移除所有協作者?他們將無法再存取這趟行程。')) return;
+          await db.updateTrip(trip.id, { members: [], inviteCode: '' });
+          close(); render();
+        };
+      }
     }
     sheet.querySelector('#f-cancel').onclick = close;
     sheet.querySelector('#f-save').onclick = async () => {

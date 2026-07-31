@@ -97,15 +97,18 @@ async function createTrip({ name, startDate = '', endDate = '', people = 1, owne
     id: newId(), name: (name || '未命名旅程').trim(),
     startDate, endDate, people: Number(people) || 1,
     ownerId,                        // 這趟的擁有者(登入者 id);列表依此過濾
+    members: [],                    // 協作者的 uid 清單(擁有者不列在內)
+    inviteCode: '',                 // 邀請碼(產生邀請連結時才填)
     public: false,                  // 是否開放公開分享(唯讀)
     createdAt: now, updatedAt: now, deleted: false,
   };
   await put('trips', trip); notify(); return trip;
 }
-// 只列出「屬於 ownerId」的旅程。未登入(ownerId 為空)則回傳空陣列。
-async function listTrips(ownerId) {
-  if (!ownerId) return [];
-  return active(await getAll('trips')).filter((t) => t.ownerId === ownerId)
+// 列出「我擁有」或「我是協作成員」的旅程。未登入回傳空陣列。
+async function listTrips(userId) {
+  if (!userId) return [];
+  return active(await getAll('trips'))
+    .filter((t) => t.ownerId === userId || (t.members || []).includes(userId))
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 async function getTrip(id) {

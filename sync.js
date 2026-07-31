@@ -38,6 +38,11 @@ export async function fetchPublicPlaces(tripId) {
   return data.map((r) => ({ ...(r.data || {}), id: r.id })).filter((p) => !p.deleted);
 }
 
+// 加入協作:憑邀請碼把自己加進該行程的 members(由後端 RPC 安全處理)
+export async function joinTrip(tripId, code) {
+  return supabase.rpc('join_trip', { p_trip_id: tripId, p_code: code });
+}
+
 export const signUp = (email, password) => supabase.auth.signUp({ email, password });
 export const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
 export const signOut = () => supabase.auth.signOut();
