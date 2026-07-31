@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v34'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v35'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1397,41 +1397,20 @@ header.querySelector('.back').addEventListener('click', () => { location.hash = 
 db.migrateCategories().catch(() => {}).finally(render); // 舊資料「餐廳」→「美食」後再繪製
 initCloud();
 
-// ---- Service Worker + 更新通知 --------------------------------------------
-// 有新版時,底部跳出「有新版本 · 立即更新」;點一下叫新版接管並重新載入。
-function showUpdateBar(worker) {
-  if (document.querySelector('.update-bar')) return;
-  const bar = document.createElement('div');
-  bar.className = 'update-bar';
-  bar.innerHTML = `<span>${ic('sparkle')} 有新版本可用</span><button>立即更新</button>`;
-  document.body.appendChild(bar);
-  requestAnimationFrame(() => bar.classList.add('show'));
-  bar.querySelector('button').onclick = () => {
-    updatingSW = true;
-    bar.querySelector('button').textContent = '更新中…';
-    worker.postMessage('skip-waiting');
-  };
-}
-
-let updatingSW = false;
+// ---- Service Worker + 自動更新 --------------------------------------------
+// 新版 SW 一裝好就自我接管(見 sw.js 的 skipWaiting);接管的瞬間自動重載,
+// 使用者不用看橫幅、也不用手動按更新 —— iOS PWA 卡更新的老問題到此為止。
 let swReg = null;
 if ('serviceWorker' in navigator) {
+  let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (updatingSW) location.reload(); // 新版接管後重載,拿到最新畫面
+    if (reloaded) return;
+    reloaded = true;
+    location.reload();
   });
   window.addEventListener('load', async () => {
     try {
       swReg = await navigator.serviceWorker.register('./sw.js');
-      // 開啟時就已有等待中的新版
-      if (swReg.waiting && navigator.serviceWorker.controller) showUpdateBar(swReg.waiting);
-      // 之後偵測到新版下載完成
-      swReg.addEventListener('updatefound', () => {
-        const nw = swReg.installing;
-        if (!nw) return;
-        nw.addEventListener('statechange', () => {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBar(nw);
-        });
-      });
       swReg.update().catch(() => {}); // 載入時主動檢查一次
     } catch (_) {}
   });

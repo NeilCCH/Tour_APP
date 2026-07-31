@@ -1,12 +1,14 @@
 // sw.js — Service Worker
 // 讓 App 可以「加入主畫面」並在離線時開啟。
-// 策略：App 外殼（HTML/CSS/JS/圖示）預先快取，離線也能開；
-// 你的旅程資料不在這裡，是存在瀏覽器的 IndexedDB（見 db.js）。
+// 策略:
+//  - 程式外殼(HTML/JS/CSS):網路優先 → 有網路時「永遠」拿到最新版,離線才退回快取。
+//  - 圖片/圖示:快取優先(很少變動,載入更快)。
+//  - 新版一偵測到就立即接管(skipWaiting + clients.claim),不用等使用者按按鈕。
+// 你的旅程資料不在這裡,是存在瀏覽器的 IndexedDB(見 db.js)。
 //
-// 改版須知：每次更新 App 外殼檔案後，把下面的 CACHE 版本號 +1（例如 v1 → v2），
-// 使用者下次連線開啟時就會自動更新到新版。
+// 改版須知:更新外殼檔案後,把下面的 CACHE 版本號 +1,離線快取就會刷新。
 
-const CACHE = 'tour-v34';
+const CACHE = 'tour-v35';
 
 const SHELL = [
   './',
@@ -25,12 +27,13 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  // 不自動 skipWaiting:新版先進入「等待中」,由 App 顯示更新通知,
-  // 使用者按下才接管(見下方 message 處理)。
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  // 立即接管:新版一裝好就啟用,不停在「等待中」(iOS PWA 常卡在這一步)。
+  e.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
+  );
 });
 
-// App 端按「立即更新」時會送這個訊息過來,新版才接管
+// 保留:App 端若送 skip-waiting 也能提早接管(相容舊版)。
 self.addEventListener('message', (e) => {
   if (e.data === 'skip-waiting') self.skipWaiting();
 });
@@ -43,24 +46,46 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// 網路優先:先打網路(順手更新快取),逾時或離線才用快取。
+function networkFirst(req) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const fromCache = () => caches.match(req).then((hit) => resolve(hit || caches.match('./index.html')));
+    // 網路太慢(4秒)先用快取墊著,避免開啟卡住;網路回來時仍會更新快取供下次使用。
+    const timer = setTimeout(() => {
+      if (!settled) caches.match(req).then((hit) => { if (hit && !settled) { settled = true; resolve(hit); } });
+    }, 4000);
+    fetch(req).then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+      if (!settled) { settled = true; clearTimeout(timer); resolve(res); }
+    }).catch(() => {
+      if (!settled) { settled = true; clearTimeout(timer); fromCache(); }
+    });
+  });
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
 
-  // 導覽請求（開啟頁面）：先試網路，離線時退回快取的首頁
-  if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).catch(() => caches.match('./index.html')));
+  const path = new URL(req.url).pathname;
+  const isImage = /\.(png|jpe?g|webp|svg|ico|gif)$/i.test(path);
+
+  if (isImage) {
+    // 圖片:快取優先,沒有再打網路並順手存起來
+    e.respondWith(
+      caches.match(req).then((hit) =>
+        hit || fetch(req).then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          return res;
+        }).catch(() => hit)
+      )
+    );
     return;
   }
 
-  // 其餘：快取優先，沒有再打網路並順手存起來
-  e.respondWith(
-    caches.match(req).then((hit) =>
-      hit || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-        return res;
-      }).catch(() => hit)
-    )
-  );
+  // HTML / JS / CSS / 其他:網路優先 → 上線時永遠最新
+  e.respondWith(networkFirst(req));
 });
