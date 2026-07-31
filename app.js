@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v31'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v32'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -231,7 +231,7 @@ function sharedView(trip, places) {
   let html = `
     <div class="trip-hero">
       <div style="font-size:1.4rem;font-weight:800;margin-bottom:.5rem">${esc(trip.name)}</div>
-      <div class="dates">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
+      <div class="dates" style="--c:#f59e0b">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
       <div class="stats">
         <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
         <div class="stat" style="--c:#14b8a6"><div class="v">${trip.people || 1}</div><div class="l">人</div></div>
@@ -520,7 +520,7 @@ async function renderTrip(trip) {
 
   const head = presenceBar + `
     <div class="trip-hero">
-      <div class="dates">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
+      <div class="dates" style="--c:#f59e0b">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
       <div class="owner-line">發起人:${esc(nameFor(trip.ownerId))}${trip.ownerId === currentUser.id ? '（你）' : '　・你是協作者'}</div>
       <div class="stats">
         <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
