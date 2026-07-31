@@ -43,6 +43,26 @@ export async function joinTrip(tripId, code) {
   return supabase.rpc('join_trip', { p_trip_id: tripId, p_code: code });
 }
 
+// ---- 使用者暱稱 profiles(供顯示「Neo,您好」與 email 邀請查詢)------------------
+export async function saveProfile(nickname) {
+  const user = await currentUser(); if (!user) return;
+  return supabase.from('profiles').upsert({ id: user.id, email: user.email, nickname, updated_at: Date.now() });
+}
+export async function getMyProfile() {
+  const user = await currentUser(); if (!user) return null;
+  const { data } = await supabase.from('profiles').select('nickname,email').eq('id', user.id).maybeSingle();
+  return data || null;
+}
+export async function findProfileByEmail(email) {
+  const { data } = await supabase.from('profiles').select('id,nickname,email').eq('email', email).maybeSingle();
+  return data || null;
+}
+export async function getProfiles(ids) {
+  if (!ids || !ids.length) return [];
+  const { data } = await supabase.from('profiles').select('id,nickname,email').in('id', ids);
+  return data || [];
+}
+
 export const signUp = (email, password) => supabase.auth.signUp({ email, password });
 export const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
 export const signOut = () => supabase.auth.signOut();

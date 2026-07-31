@@ -73,6 +73,8 @@ function fmtTime(min) {
 let currentUser = localStorage.getItem('authUserId')
   ? { id: localStorage.getItem('authUserId'), email: localStorage.getItem('authUserEmail') || '' }
   : null;
+let nickname = localStorage.getItem('authNickname') || '';
+const displayName = () => nickname || (currentUser?.email ? currentUser.email.split('@')[0] : '');
 
 function setHeader(title, showBack) {
   header.classList.toggle('has-back', !!showBack);
@@ -225,9 +227,10 @@ async function renderJoin(tripId, code) {
 async function renderHome() {
   setHeader('我的旅程', false);
   const trips = await db.listTrips(currentUser.id);
+  const greeting = `<div class="greeting"><b>${esc(displayName())}</b>,您好</div>`;
 
   if (trips.length === 0) {
-    app.innerHTML = `
+    app.innerHTML = greeting + `
       <div class="empty">
         <div class="big">${ic('suitcase')}</div>
         <p>還沒有旅程。<br>點右下角的 <b>＋</b> 建立第一趟旅程。</p>
@@ -235,9 +238,9 @@ async function renderHome() {
   } else {
     // 每趟旅程附帶地點數量
     const counts = await Promise.all(trips.map((t) => db.listPlaces(t.id).then((p) => p.length)));
-    app.innerHTML = trips.map((t, i) => `
+    app.innerHTML = greeting + trips.map((t, i) => `
       <div class="card trip" data-trip="${esc(t.id)}" style="--tc:${dayColor(i + 1)}">
-        <h3>${esc(t.name)}</h3>
+        <h3>${esc(t.name)}${t.ownerId !== currentUser.id ? ' <span class="tag">協作</span>' : ''}</h3>
         <div class="meta">${esc(fmtDateRange(t.startDate, t.endDate))} ・ ${t.people} 人 ・ ${counts[i]} 個地點</div>
       </div>`).join('');
     app.querySelectorAll('[data-trip]').forEach((c) =>
@@ -997,10 +1000,17 @@ function setAuthUser(user) {
       localStorage.setItem('ownerRepairDone', '1');
       db.claimOwnerlessTrips(user.id).then((n) => { if (n) render(); }).catch(() => {});
     }
+    // 載入暱稱(先用本地快取,再從雲端更新)
+    nickname = localStorage.getItem('authNickname') || '';
+    if (cloud) cloud.getMyProfile().then((p) => {
+      if (p && p.nickname) { nickname = p.nickname; localStorage.setItem('authNickname', nickname); updateAcct(); render(); }
+      else if (nickname) cloud.saveProfile(nickname).catch(() => {}); // 本地有暱稱、雲端還沒有 → 補寫
+    }).catch(() => {});
   } else {
-    currentUser = null;
+    currentUser = null; nickname = '';
     localStorage.removeItem('authUserId');
     localStorage.removeItem('authUserEmail');
+    localStorage.removeItem('authNickname');
   }
   updateAcct();
   render();
@@ -1030,14 +1040,28 @@ function openAuthSheet() {
   if (cloudUser) {
     const stTxt = { syncing: '同步中…', synced: '已同步 ✓', error: '上次同步失敗 ⚠' }[cloudState] || '—';
     openSheet(`
-      <h2>雲端帳號</h2>
-      <p class="meta" style="margin-bottom:16px">已登入:<b>${esc(cloudUser.email || '')}</b><br>狀態:${stTxt}</p>
+      <h2>${esc(displayName())},您好</h2>
+      <p class="meta" style="margin-bottom:14px">已登入:<b>${esc(cloudUser.email || '')}</b><br>狀態:${stTxt}</p>
+      <label class="field"><span class="lab">暱稱</span>
+        <div style="display:flex;gap:.5rem">
+          <input id="a-nick" value="${esc(nickname)}" placeholder="例如：Neo">
+          <button type="button" class="btn ghost" id="a-nicksave" style="width:auto;padding:.6rem 1rem">儲存</button>
+        </div></label>
       <div class="btn-row">
         <button class="btn primary" id="a-sync">立即同步</button>
         <button class="btn danger" id="a-out">登出</button>
         <button class="btn ghost" id="a-cancel">關閉</button>
       </div>`, (sheet, close) => {
       sheet.querySelector('#a-cancel').onclick = close;
+      sheet.querySelector('#a-nicksave').onclick = async () => {
+        const nk = sheet.querySelector('#a-nick').value.trim();
+        if (!nk) return;
+        nickname = nk; localStorage.setItem('authNickname', nk);
+        await cloud.saveProfile(nk).catch(() => {});
+        const b = sheet.querySelector('#a-nicksave'); b.textContent = '已存';
+        setTimeout(() => { b.textContent = '儲存'; }, 1200);
+        updateAcct(); render();
+      };
       sheet.querySelector('#a-sync').onclick = () => { cloud.fullSync().catch(() => {}); close(); };
       sheet.querySelector('#a-out').onclick = async () => {
         await cloud.signOut(); close(); setAuthUser(null);
@@ -1053,6 +1077,8 @@ function openAuthSheet() {
       <input id="a-email" type="email" autocomplete="username" placeholder="you@example.com"></label>
     <label class="field"><span class="lab">密碼</span>
       <input id="a-pass" type="password" autocomplete="current-password" placeholder="至少 6 碼"></label>
+    <label class="field"><span class="lab">暱稱（註冊用,App 內會顯示）</span>
+      <input id="a-nick" placeholder="例如：Neo"></label>
     <div id="a-msg" class="meta" style="min-height:18px"></div>
     <div class="btn-row">
       <button class="btn primary" id="a-login">登入</button>
@@ -1072,12 +1098,21 @@ function openAuthSheet() {
     };
     sheet.querySelector('#a-signup').onclick = async () => {
       const [email, pass] = vals();
+      const nick = sheet.querySelector('#a-nick').value.trim();
       if (!email || pass.length < 6) return fail('請輸入 Email 和至少 6 碼密碼');
       msg.style.color = 'var(--text-dim)'; msg.textContent = '註冊中…';
       const { data, error } = await cloud.signUp(email, pass);
       if (error) return fail('註冊失敗:' + error.message);
-      if (data.session) close();  // 已直接登入（未開啟 Email 驗證時）
-      else { msg.style.color = 'var(--accent)'; msg.textContent = '註冊成功!請收 Email 確認信、點連結後再回來登入。'; }
+      if (data.session) {
+        // 存暱稱到 profiles(未開啟 Email 驗證時已直接登入)
+        const nk = nick || email.split('@')[0];
+        nickname = nk; localStorage.setItem('authNickname', nk);
+        cloud.saveProfile(nk).catch(() => {});
+        close();
+      } else {
+        if (nick) localStorage.setItem('authNickname', nick); // 待驗證後登入再寫入雲端
+        msg.style.color = 'var(--accent)'; msg.textContent = '註冊成功!請收 Email 確認信、點連結後再回來登入。';
+      }
     };
   });
 }

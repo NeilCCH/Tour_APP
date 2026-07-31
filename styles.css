@@ -80,6 +80,10 @@ header .acct:active { opacity: .75; }
 
 main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-width: 680px; margin: 0 auto; }
 
+/* 首頁問候語 */
+.greeting { font-size: 1.2rem; font-weight: 700; color: var(--text-dim); margin: .2rem .25rem 1rem; }
+.greeting b { color: var(--accent); }
+
 /* ---- 卡片 ---- */
 .card {
   background: var(--card); border-radius: var(--radius);

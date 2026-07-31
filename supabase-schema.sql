@@ -119,3 +119,24 @@ begin
      and not (coalesce(data->'members', '[]'::jsonb) ? auth.uid()::text);
 end; $$;
 grant execute on function public.join_trip(uuid, text) to authenticated;
+
+-- ===========================================================================
+-- 使用者暱稱 profiles(顯示「Neo,您好」;也供 email 邀請查詢與協作者名單)
+-- ===========================================================================
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  nickname text,
+  updated_at bigint not null default 0
+);
+alter table public.profiles enable row level security;
+grant select, insert, update on public.profiles to authenticated;
+
+-- 讀:登入者都可讀(供顯示暱稱與 email 邀請查詢)
+drop policy if exists "read profiles" on public.profiles;
+create policy "read profiles" on public.profiles for select using (auth.uid() is not null);
+
+-- 寫:只能新增/修改自己的
+drop policy if exists "write own profile" on public.profiles;
+create policy "write own profile" on public.profiles for all
+  using (id = auth.uid()) with check (id = auth.uid());
