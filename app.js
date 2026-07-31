@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v35'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v36'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -529,8 +529,8 @@ async function renderTrip(trip) {
         <div class="stat" style="--c:#8b5cf6"><div class="v">${places.length}</div><div class="l">地點</div></div>
       </div>
       <div class="hero-actions">
-        <button class="btn ghost" style="--c:#64748b" data-edit-trip-btn>${ic('edit')} 編輯旅程</button>
-        <button class="btn ghost" style="--c:#ec4899" data-share-btn>${ic('link')} 分享 / 邀請協作</button>
+        <button class="btn ghost" style="--c:#0ea5e9" data-edit-trip-btn>${ic('edit')} 編輯旅程</button>
+        <button class="btn ghost" style="--c:#f472b6" data-share-btn>${ic('link')} 分享 / 邀請協作</button>
       </div>
     </div>`;
 
