@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v26'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v27'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -42,6 +42,23 @@ function ic(name) {
   const fill = FILLED.has(name) ? 'currentColor' : 'none';
   const stroke = FILLED.has(name) ? 'none' : 'currentColor';
   return `<span class="ic"><svg viewBox="0 0 24 24" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg></span>`;
+}
+
+// 依需要載入 Leaflet 地圖(使用者瀏覽器從 CDN 取得,只載一次)
+let _leafletPromise = null;
+function loadLeaflet() {
+  if (_leafletPromise) return _leafletPromise;
+  _leafletPromise = (async () => {
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css'; link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+    const mod = await import('https://esm.sh/leaflet@1.9.4');
+    return mod.default || mod;
+  })();
+  return _leafletPromise;
 }
 
 // ---- 顏色:交通模式、地點分類各給一色(淺色塊)------------------------------
@@ -977,6 +994,8 @@ function openPlaceSheet(tripId, place = null) {
         <span class="meta" id="f-loc" style="flex:1;min-width:0"></span>
       </div>
       <div id="f-cands" class="cands"></div></label>
+    <button type="button" class="btn ghost" id="f-mapbtn" style="width:auto;padding:.4rem 0;font-size:.9rem;margin:-.6rem 0 .4rem">在地圖上拖曳微調</button>
+    <div id="f-map" class="mapbox" style="display:none"></div>
 
     <label class="field"><span class="lab">分類</span>
       <div class="chips" id="f-cat">
@@ -1037,6 +1056,8 @@ function openPlaceSheet(tripId, place = null) {
     let coords = (place && place.lat != null && place.lng != null) ? { lat: place.lat, lng: place.lng } : null;
     const locEl = sheet.querySelector('#f-loc');
     const candBox = sheet.querySelector('#f-cands');
+    let map = null, marker = null;
+    const syncMap = () => { if (map && marker && coords) { map.setView([coords.lat, coords.lng], 16); marker.setLatLng([coords.lat, coords.lng]); } };
     if (coords) locEl.textContent = `已定位 ✓ (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
     sheet.querySelector('#f-locate').onclick = async () => {
       const q = sheet.querySelector('#f-name').value.trim();
@@ -1055,8 +1076,29 @@ function openPlaceSheet(tripId, place = null) {
           locEl.textContent = '已選:' + r.label.split(',').slice(0, 3).join(',');
           candBox.querySelectorAll('.cand').forEach((x) => x.classList.remove('on'));
           b.classList.add('on');
+          syncMap();
         });
       } catch (e) { locEl.textContent = '定位失敗:' + (e.message || e); }
+    };
+
+    // 在地圖上拖曳微調
+    sheet.querySelector('#f-mapbtn').onclick = async () => {
+      const mapBox = sheet.querySelector('#f-map');
+      mapBox.style.display = 'block';
+      try {
+        const L = await loadLeaflet();
+        const start = coords || { lat: 23.7, lng: 121 };
+        if (!map) {
+          map = L.map(mapBox).setView([start.lat, start.lng], coords ? 16 : 7);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+          const icon = L.divIcon({ className: 'map-pin', html: '<div class="pin-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+          marker = L.marker([start.lat, start.lng], { draggable: true, icon }).addTo(map);
+          const apply = (ll) => { coords = { lat: ll.lat, lng: ll.lng }; locEl.textContent = `已定位 ✓ (${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)})`; };
+          marker.on('dragend', () => apply(marker.getLatLng()));
+          map.on('click', (e) => { marker.setLatLng(e.latlng); apply(e.latlng); });
+        }
+        setTimeout(() => map.invalidateSize(), 60);
+      } catch (e) { locEl.textContent = '地圖載入失敗(可能離線或被網路阻擋)'; }
     };
 
     // 釘選開關

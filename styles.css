@@ -264,6 +264,10 @@ textarea { resize: vertical; min-height: 4.2rem; }
   background: var(--card); color: var(--text); font-size: .9rem; cursor: pointer; font-family: inherit; }
 .cand.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--accent); }
 .owner-line { font-size: .95rem; color: var(--text-dim); font-weight: 600; margin-top: .3rem; }
+.mapbox { height: 240px; border-radius: 12px; overflow: hidden; margin-bottom: 1rem; border: 1px solid var(--border); }
+.mapbox .leaflet-container { height: 100%; font-family: inherit; }
+.map-pin .pin-dot { width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
+  border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.5); }
 
 /* ---- 按鈕 ---- */
 .btn {
