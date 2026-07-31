@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v29'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v30'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1413,23 +1413,28 @@ function showUpdateBar(worker) {
 }
 
 let updatingSW = false;
+let swReg = null;
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (updatingSW) location.reload(); // 新版接管後重載,拿到最新畫面
   });
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./sw.js');
+      swReg = await navigator.serviceWorker.register('./sw.js');
       // 開啟時就已有等待中的新版
-      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg.waiting);
+      if (swReg.waiting && navigator.serviceWorker.controller) showUpdateBar(swReg.waiting);
       // 之後偵測到新版下載完成
-      reg.addEventListener('updatefound', () => {
-        const nw = reg.installing;
+      swReg.addEventListener('updatefound', () => {
+        const nw = swReg.installing;
         if (!nw) return;
         nw.addEventListener('statechange', () => {
           if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBar(nw);
         });
       });
+      swReg.update().catch(() => {}); // 載入時主動檢查一次
     } catch (_) {}
   });
+  // 回到前景時主動檢查更新(iOS PWA 常不會自動檢查)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && swReg) swReg.update().catch(() => {}); });
+  window.addEventListener('focus', () => { if (swReg) swReg.update().catch(() => {}); });
 }
