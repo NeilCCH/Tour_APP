@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v27'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v28'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -455,12 +455,13 @@ function planBody(trip, places, dayCount) {
   // 日期分頁條
   const pool = places.filter((p) => !p.assignedDay && !anchors.has(p.id)).sort((a, b) => a.createdAt - b.createdAt);
   body += `<div class="day-strip">`;
+  // 候選放最前面
+  body += `<button class="day-pill ${planDay === 'pool' ? 'on' : ''}" data-day="pool" ${planDay === 'pool' ? 'style="background:#64748b"' : ''}>候選 ${pool.length}</button>`;
   for (let d = 1; d <= dayCount; d++) {
     const on = planDay === d;
     body += `<button class="day-pill ${on ? 'on' : ''}" data-day="${d}" ${on ? `style="background:${dayColor(d)}"` : ''}>Day ${d}</button>`;
   }
   if (!datesFixed) body += `<button class="day-pill" id="add-day">＋</button>`;
-  body += `<button class="day-pill ${planDay === 'pool' ? 'on' : ''}" data-day="pool" ${planDay === 'pool' ? 'style="background:#64748b"' : ''}>候選 ${pool.length}</button>`;
   body += `</div>`;
 
   // 候選池
