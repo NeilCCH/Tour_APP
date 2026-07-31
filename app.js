@@ -12,6 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
+const APP_VERSION = 'v22'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -996,8 +997,8 @@ function setAuthUser(user) {
     localStorage.setItem('authUserId', user.id);
     localStorage.setItem('authUserEmail', user.email || '');
     // 一次性修復:認領缺少擁有者標記的舊行程(避免更新後行程看似消失)
-    if (!localStorage.getItem('ownerRepairDone')) {
-      localStorage.setItem('ownerRepairDone', '1');
+    if (!localStorage.getItem('ownerRepairDone2')) {
+      localStorage.setItem('ownerRepairDone2', '1');
       db.claimOwnerlessTrips(user.id).then((n) => { if (n) render(); }).catch(() => {});
     }
     // 載入暱稱(先用本地快取,再從雲端更新)
@@ -1041,7 +1042,7 @@ function openAuthSheet() {
     const stTxt = { syncing: '同步中…', synced: '已同步 ✓', error: '上次同步失敗 ⚠' }[cloudState] || '—';
     openSheet(`
       <h2>${esc(displayName())},您好</h2>
-      <p class="meta" style="margin-bottom:14px">已登入:<b>${esc(cloudUser.email || '')}</b><br>狀態:${stTxt}</p>
+      <p class="meta" style="margin-bottom:14px">已登入:<b>${esc(cloudUser.email || '')}</b><br>狀態:${stTxt}　・　版本 ${APP_VERSION}</p>
       <label class="field"><span class="lab">暱稱</span>
         <div style="display:flex;gap:.5rem">
           <input id="a-nick" value="${esc(nickname)}" placeholder="例如：Neo">
