@@ -63,6 +63,23 @@ export async function getProfiles(ids) {
   return data || [];
 }
 
+// ---- Email 邀請 + 通知 + 接受 + 協作者管理 ----------------------------------
+export async function createInvite(tripId, tripName, inviterName, inviteeId) {
+  return supabase.from('invitations').insert({
+    trip_id: tripId, trip_name: tripName, inviter_name: inviterName,
+    invitee_id: inviteeId, status: 'pending', created_at: Date.now(),
+  });
+}
+export async function listMyInvites() {
+  const user = await currentUser(); if (!user) return [];
+  const { data } = await supabase.from('invitations').select('*')
+    .eq('invitee_id', user.id).eq('status', 'pending');
+  return data || [];
+}
+export async function acceptInvite(id) { return supabase.rpc('accept_invite', { p_invite: id }); }
+export async function declineInvite(id) { return supabase.from('invitations').update({ status: 'declined' }).eq('id', id); }
+export async function removeMember(tripId, memberId) { return supabase.rpc('remove_member', { p_trip: tripId, p_member: memberId }); }
+
 export const signUp = (email, password) => supabase.auth.signUp({ email, password });
 export const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
 export const signOut = () => supabase.auth.signOut();

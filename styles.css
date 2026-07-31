@@ -77,6 +77,8 @@ header .acct {
   cursor: pointer; font-family: inherit; backdrop-filter: blur(4px);
 }
 header .acct:active { opacity: .75; }
+header .acct.notif { background: #f59e0b; color: #fff; }
+.member-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .4rem 0; color: var(--text); font-weight: 600; }
 
 main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-width: 680px; margin: 0 auto; }
 

@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
 
-const APP_VERSION = 'v24'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v25'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -820,7 +820,14 @@ function openTripSheet(trip = null, focusShare = false) {
       <input id="f-inviteurl" readonly value="${trip.inviteCode ? esc(location.origin + location.pathname + '#/join/' + trip.id + '/' + trip.inviteCode) : ''}">
       <button type="button" class="btn ghost" id="f-invitecopy" style="width:auto;padding:.6rem 1rem">複製</button>
     </div>
-    ${(trip.members || []).length ? '<button type="button" class="btn ghost" id="f-stopcollab" style="margin-bottom:1rem">停止協作（移除所有協作者）</button>' : ''}` : ''}
+    <label class="field" style="margin-top:.5rem"><span class="lab">或用 Email 邀請(對方會收到 App 內通知)</span>
+      <div style="display:flex;gap:.5rem">
+        <input id="f-invemail" type="email" placeholder="對方註冊用的 email">
+        <button type="button" class="btn ghost" id="f-invsend" style="width:auto;padding:.6rem 1rem">邀請</button>
+      </div></label>
+    <div id="f-invmsg" class="meta" style="min-height:1.1em;margin-bottom:.6rem"></div>
+    <div class="lab" style="margin:.2rem 0 .4rem">協作者名單</div>
+    <div id="f-members" class="meta" style="margin-bottom:1rem">—</div>` : ''}
     <div class="btn-row">
       <button class="btn primary" id="f-save">${editing ? '儲存' : '建立旅程'}</button>
       ${editing ? '<button class="btn danger" id="f-del">刪除這趟旅程</button>' : ''}
@@ -870,13 +877,47 @@ function openTripSheet(trip = null, focusShare = false) {
             setTimeout(() => { b.textContent = '複製'; }, 1500);
           }).catch(() => {});
         };
-        const stop = sheet.querySelector('#f-stopcollab');
-        if (stop) stop.onclick = async () => {
-          if (!confirm('確定移除所有協作者?他們將無法再存取這趟行程。')) return;
-          await db.updateTrip(trip.id, { members: [], inviteCode: '' });
-          close(); render();
-        };
       }
+
+      // Email 邀請 + 協作者名單(需雲端)
+      const invMsg = sheet.querySelector('#f-invmsg');
+      const membersBox = sheet.querySelector('#f-members');
+      const loadMembers = async () => {
+        const ids = trip.members || [];
+        if (!cloud || !cloud.getProfiles) { membersBox.textContent = ids.length ? `${ids.length} 位協作者` : '目前沒有協作者。'; return; }
+        if (!ids.length) { membersBox.textContent = '目前沒有協作者。'; return; }
+        const profs = await cloud.getProfiles(ids).catch(() => []);
+        const byId = new Map(profs.map((p) => [p.id, p]));
+        membersBox.innerHTML = ids.map((id) => {
+          const p = byId.get(id);
+          const label = p ? (p.nickname || p.email || id) : id;
+          return `<div class="member-row"><span>${esc(label)}</span>
+            <button type="button" class="btn danger" data-rm="${esc(id)}" style="width:auto;padding:.25rem .7rem;font-size:.9rem">移除</button></div>`;
+        }).join('');
+        membersBox.querySelectorAll('[data-rm]').forEach((b) => b.onclick = async () => {
+          if (!confirm('移除這位協作者?他將無法再存取這趟行程。')) return;
+          if (cloud.removeMember) await cloud.removeMember(trip.id, b.dataset.rm).catch(() => {});
+          trip.members = (trip.members || []).filter((x) => x !== b.dataset.rm);
+          await cloud.fullSync?.().catch(() => {});
+          loadMembers();
+        });
+      };
+      loadMembers();
+
+      sheet.querySelector('#f-invsend')?.addEventListener('click', async () => {
+        const em = sheet.querySelector('#f-invemail').value.trim();
+        if (!em) return;
+        if (!cloud || !cloud.findProfileByEmail) { invMsg.style.color = 'var(--danger)'; invMsg.textContent = '雲端未載入(可能離線)'; return; }
+        invMsg.style.color = 'var(--text-dim)'; invMsg.textContent = '查詢中…';
+        const prof = await cloud.findProfileByEmail(em).catch(() => null);
+        if (!prof) { invMsg.style.color = 'var(--danger)'; invMsg.textContent = '找不到這個 email(對方需先註冊並登入過一次)'; return; }
+        if (prof.id === currentUser.id) { invMsg.style.color = 'var(--danger)'; invMsg.textContent = '不能邀請自己'; return; }
+        if ((trip.members || []).includes(prof.id)) { invMsg.style.color = 'var(--danger)'; invMsg.textContent = '對方已經是協作者'; return; }
+        const { error } = await cloud.createInvite(trip.id, trip.name, displayName(), prof.id);
+        if (error) { invMsg.style.color = 'var(--danger)'; invMsg.textContent = '邀請失敗:' + (error.message || ''); return; }
+        invMsg.style.color = 'var(--accent)'; invMsg.textContent = `已邀請 ${prof.nickname || em},對方 App 會收到通知`;
+        sheet.querySelector('#f-invemail').value = '';
+      });
     }
     sheet.querySelector('#f-cancel').onclick = close;
     sheet.querySelector('#f-save').onclick = async () => {
@@ -1045,6 +1086,59 @@ acctBtn.className = 'acct';
 acctBtn.addEventListener('click', openAuthSheet);
 header.appendChild(acctBtn);
 
+// 邀請通知鈴
+let pendingInvites = [];
+const notifBtn = document.createElement('button');
+notifBtn.className = 'acct notif';
+notifBtn.style.display = 'none';
+notifBtn.addEventListener('click', openNotifSheet);
+header.insertBefore(notifBtn, acctBtn);
+
+function updateNotif() {
+  const n = pendingInvites.length;
+  notifBtn.style.display = (currentUser && n > 0) ? 'inline-flex' : 'none';
+  notifBtn.textContent = '邀請 ' + n;
+}
+async function refreshInvites() {
+  if (!cloud || !cloud.listMyInvites || !currentUser) { pendingInvites = []; updateNotif(); return; }
+  try { pendingInvites = await cloud.listMyInvites(); } catch (_) { pendingInvites = []; }
+  updateNotif();
+}
+function openNotifSheet() {
+  if (!cloud) { alert('雲端載入失敗,無法查看邀請。'); return; }
+  const items = pendingInvites;
+  openSheet(`
+    <h2>邀請通知</h2>
+    ${items.length ? items.map((iv) => `
+      <div class="card" style="cursor:default">
+        <h3>${esc(iv.inviter_name || '有人')} 邀請你一起編輯</h3>
+        <div class="meta">${esc(iv.trip_name || '一趟行程')}</div>
+        <div class="btn-row" style="margin-top:.6rem">
+          <button class="btn primary" data-acc="${esc(iv.id)}" data-trip="${esc(iv.trip_id)}">接受並加入</button>
+          <button class="btn ghost" data-dec="${esc(iv.id)}">拒絕</button>
+        </div>
+      </div>`).join('') : '<p class="meta">目前沒有待處理的邀請。</p>'}
+    <div class="btn-row"><button class="btn ghost" id="n-close">關閉</button></div>
+  `, (sheet, close) => {
+    sheet.querySelector('#n-close').onclick = close;
+    sheet.querySelectorAll('[data-acc]').forEach((b) => b.onclick = async () => {
+      b.textContent = '加入中…';
+      const { error } = await cloud.acceptInvite(b.dataset.acc);
+      if (error) { b.textContent = '失敗:' + (error.message || ''); return; }
+      await cloud.fullSync().catch(() => {});
+      await refreshInvites();
+      close();
+      location.hash = `#/trip/${b.dataset.trip}`;
+    });
+    sheet.querySelectorAll('[data-dec]').forEach((b) => b.onclick = async () => {
+      await cloud.declineInvite(b.dataset.dec).catch(() => {});
+      await refreshInvites();
+      close();
+    });
+  });
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshInvites(); });
+
 function updateAcct() {
   if (!currentUser) { acctBtn.textContent = '登入'; return; }
   if (!cloud) { acctBtn.textContent = '☁︎ 已登入'; return; }
@@ -1069,12 +1163,15 @@ function setAuthUser(user) {
       if (p && p.nickname) { nickname = p.nickname; localStorage.setItem('authNickname', nickname); updateAcct(); render(); }
       else if (nickname) cloud.saveProfile(nickname).catch(() => {}); // 本地有暱稱、雲端還沒有 → 補寫
     }).catch(() => {});
+    refreshInvites(); // 載入待處理的邀請通知
   } else {
     currentUser = null; nickname = '';
     localStorage.removeItem('authUserId');
     localStorage.removeItem('authUserEmail');
     localStorage.removeItem('authNickname');
+    pendingInvites = [];
   }
+  updateNotif();
   updateAcct();
   render();
 }

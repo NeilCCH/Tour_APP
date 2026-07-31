@@ -140,3 +140,68 @@ create policy "read profiles" on public.profiles for select using (auth.uid() is
 drop policy if exists "write own profile" on public.profiles;
 create policy "write own profile" on public.profiles for all
   using (id = auth.uid()) with check (id = auth.uid());
+
+-- ===========================================================================
+-- Email 邀請 + App 內通知 + 接受制 + 協作者管理
+-- ===========================================================================
+create table if not exists public.invitations (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null,
+  trip_name text,
+  inviter_id uuid not null default auth.uid(),
+  inviter_name text,
+  invitee_id uuid not null,
+  status text not null default 'pending',
+  created_at bigint not null default 0
+);
+alter table public.invitations enable row level security;
+grant select, insert, update on public.invitations to authenticated;
+
+-- 讀:邀請人或被邀請人可看
+drop policy if exists "read invites" on public.invitations;
+create policy "read invites" on public.invitations for select
+  using (inviter_id = auth.uid() or invitee_id = auth.uid());
+-- 建立:只能以自己為邀請人
+drop policy if exists "create invites" on public.invitations;
+create policy "create invites" on public.invitations for insert
+  with check (inviter_id = auth.uid());
+-- 更新:邀請人或被邀請人可改(接受/拒絕/取消)
+drop policy if exists "update invites" on public.invitations;
+create policy "update invites" on public.invitations for update
+  using (inviter_id = auth.uid() or invitee_id = auth.uid())
+  with check (inviter_id = auth.uid() or invitee_id = auth.uid());
+
+-- 接受邀請:把自己加進行程 members,並標記 accepted
+create or replace function public.accept_invite(p_invite uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_trip uuid;
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  select trip_id into v_trip from public.invitations
+   where id = p_invite and invitee_id = auth.uid() and status = 'pending';
+  if v_trip is null then raise exception 'invite not found'; end if;
+  update public.trips
+     set data = jsonb_set(data, '{members}',
+                  coalesce(data->'members','[]'::jsonb) || to_jsonb(auth.uid()::text)),
+         updated_at = (extract(epoch from now())*1000)::bigint
+   where id = v_trip and not (coalesce(data->'members','[]'::jsonb) ? auth.uid()::text);
+  update public.invitations set status = 'accepted' where id = p_invite;
+  return v_trip;
+end; $$;
+grant execute on function public.accept_invite(uuid) to authenticated;
+
+-- 移除協作者(僅擁有者)
+create or replace function public.remove_member(p_trip uuid, p_member text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.trips where id = p_trip and user_id = auth.uid()) then
+    raise exception 'not owner';
+  end if;
+  update public.trips
+     set data = jsonb_set(data, '{members}',
+                  coalesce((select jsonb_agg(x) from jsonb_array_elements_text(coalesce(data->'members','[]'::jsonb)) x
+                            where x <> p_member), '[]'::jsonb)),
+         updated_at = (extract(epoch from now())*1000)::bigint
+   where id = p_trip;
+end; $$;
+grant execute on function public.remove_member(uuid, text) to authenticated;
