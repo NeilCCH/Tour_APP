@@ -213,6 +213,19 @@ async function migrateCategories() {
   return changed;
 }
 
+// 一次性修復:把「沒有擁有者」的本地行程認領為目前使用者(不動 updatedAt,
+// 避免誤推翻雲端)。用於修復「登入把關」更新後,舊行程因缺 ownerId 而被過濾消失。
+async function claimOwnerlessTrips(userId) {
+  if (!userId) return 0;
+  const trips = await getAll('trips');
+  let n = 0;
+  for (const t of trips) {
+    if (!t.ownerId && !t.deleted) { await put('trips', { ...t, ownerId: userId }); n++; }
+  }
+  if (n) notify();
+  return n;
+}
+
 // ---- 給 sync.js 用的原始存取（含 tombstone，不改動 updatedAt）----------------
 const sync = {
   stores: STORES,
@@ -224,6 +237,6 @@ const sync = {
 export const db = {
   createTrip, listTrips, getTrip, updateTrip, deleteTrip, setTripPublic,
   createPlace, listPlaces, getPlace, updatePlace, deletePlace,
-  migrateCategories,
+  migrateCategories, claimOwnerlessTrips,
   _sync: sync,
 };

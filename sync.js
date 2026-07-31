@@ -70,8 +70,18 @@ async function syncTable(table) {
     if (c && l) {
       const cu = Number(c.updated_at) || 0;
       const lu = l.updatedAt || 0;
-      if (cu > lu) await db._sync.putRaw(table, fromCloud(c));   // 雲端較新 → 蓋回本地
-      else if (lu > cu) toPush.push(toCloud(l));                 // 本地較新 → 推上雲端
+      if (cu > lu) {
+        await db._sync.putRaw(table, fromCloud(c));              // 雲端較新 → 蓋回本地
+      } else {
+        // ownerId 以雲端 user_id 為權威,不受時間戳比較影響(修復:等於時也要補上,
+        // 否則舊資料的 ownerId 永遠補不到,列表就會過濾掉、看似消失)
+        let ll = l;
+        if (l.ownerId !== c.user_id) {
+          ll = { ...l, ownerId: c.user_id };
+          await db._sync.putRaw(table, ll);                      // 只補 ownerId,不動 updatedAt
+        }
+        if (lu > cu) toPush.push(toCloud(ll));                   // 本地較新 → 推上雲端
+      }
     } else if (c && !l) {
       await db._sync.putRaw(table, fromCloud(c));                // 只有雲端有 → 拉下來
     } else if (l && !c) {

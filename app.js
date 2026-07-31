@@ -992,6 +992,11 @@ function setAuthUser(user) {
     currentUser = { id: user.id, email: user.email || '' };
     localStorage.setItem('authUserId', user.id);
     localStorage.setItem('authUserEmail', user.email || '');
+    // 一次性修復:認領缺少擁有者標記的舊行程(避免更新後行程看似消失)
+    if (!localStorage.getItem('ownerRepairDone')) {
+      localStorage.setItem('ownerRepairDone', '1');
+      db.claimOwnerlessTrips(user.id).then((n) => { if (n) render(); }).catch(() => {});
+    }
   } else {
     currentUser = null;
     localStorage.removeItem('authUserId');
