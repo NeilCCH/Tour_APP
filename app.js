@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v50'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v51'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -2098,6 +2098,7 @@ updateOnline();
 let cloud = null;         // sync.js 模組（null = 純本地）
 let cloudUser = null;     // 目前登入者
 let cloudState = 'idle';  // idle | syncing | synced | error
+let cloudError = '';      // 最近一次同步失敗的原因(顯示在帳號視窗,方便診斷)
 
 const acctBtn = document.createElement('button');
 acctBtn.className = 'acct';
@@ -2234,8 +2235,8 @@ async function initCloud() {
   }
   cloud.onStatus((s) => {
     if (s === 'syncing') cloudState = 'syncing';
-    else if (s === 'synced') { cloudState = 'synced'; render(); }
-    else if (s && s.startsWith('error')) cloudState = 'error';
+    else if (s === 'synced') { cloudState = 'synced'; cloudError = ''; render(); }
+    else if (s && s.startsWith('error')) { cloudState = 'error'; cloudError = s.slice(6); }
     updateAcct();
   });
   await cloud.initAuth(setAuthUser); // 登入狀態變動 → 更新使用者、重繪(含把關)
@@ -2273,9 +2274,13 @@ function openAuthSheet() {
 
   if (cloudUser) {
     const stTxt = { syncing: '同步中…', synced: '已同步 ✓', error: '上次同步失敗 ⚠' }[cloudState] || '—';
+    const errBox = (cloudState === 'error' && cloudError)
+      ? `<p class="sync-err">同步錯誤訊息(給開發者看):<br>${esc(cloudError)}</p>`
+      : '';
     openSheet(`
       <h2>${esc(displayName())},您好</h2>
       <p class="meta" style="margin-bottom:14px">已登入:<b>${esc(cloudUser.email || '')}</b><br>狀態:${stTxt}　・　版本 ${APP_VERSION}</p>
+      ${errBox}
       <label class="field"><span class="lab">暱稱</span>
         <div style="display:flex;gap:.5rem">
           <input id="a-nick" value="${esc(nickname)}" placeholder="例如：Neo">

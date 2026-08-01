@@ -380,6 +380,9 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .bd-visited { color: #22b34a; font-size: .82rem; font-weight: 800; }
 #book-map { height: 260px; }
 
+.sync-err { font-size: .82rem; line-height: 1.5; color: var(--danger); word-break: break-word;
+  background: color-mix(in srgb, var(--danger) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  border-radius: 10px; padding: .55rem .7rem; margin-bottom: 14px; }
 .tip-desktop { font-size: .9rem; line-height: 1.5; color: var(--text); margin-bottom: .9rem;
   background: color-mix(in srgb, var(--accent) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   border-radius: 12px; padding: .6rem .8rem; }
