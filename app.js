@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v49'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v50'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1613,6 +1613,7 @@ function openBookMaker(trip, places, moments) {
 
   openSheet(`
     <h2>製作旅遊書 PDF</h2>
+    <p class="tip-desktop">💻 建議在<b>電腦(桌機瀏覽器)</b>生成:速度快、記憶體充足、最穩定。手機也能做,但素材/照片較多時會較慢、較耗記憶體。</p>
     <label class="field"><span class="lab">書名</span>
       <input id="bm-title" value="${esc(trip.name)}"></label>
     <div class="lab" style="margin:.2rem 0 .4rem">要包含的區塊</div>
@@ -1795,7 +1796,8 @@ function openVideoMaker(trip, places, moments) {
 
   openSheet(`
     <h2>製作回顧影片</h2>
-    ${supported ? '' : '<p class="meta" style="color:var(--danger);margin-bottom:.6rem">這台裝置/瀏覽器不支援在網頁內生成影片。建議改用電腦的瀏覽器開啟本頁製作。</p>'}
+    <p class="tip-desktop">💻 強烈建議在<b>電腦(桌機瀏覽器)</b>生成:成功率最高、速度最快。影片是「即時錄製」,手機生成時螢幕需全程開著、不能切走 App,較長的影片(90/120 秒)在電腦上體驗更好。</p>
+    ${supported ? '' : '<p class="meta" style="color:var(--danger);margin-bottom:.6rem">這台裝置/瀏覽器不支援在網頁內生成影片。請改用電腦的瀏覽器開啟本頁製作。</p>'}
     <div class="lab" style="margin:.2rem 0 .4rem">影片長度</div>
     <div class="chips" id="vm-dur">
       <div class="chip" data-d="30">30 秒</div>

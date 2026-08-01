@@ -380,6 +380,9 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .bd-visited { color: #22b34a; font-size: .82rem; font-weight: 800; }
 #book-map { height: 260px; }
 
+.tip-desktop { font-size: .9rem; line-height: 1.5; color: var(--text); margin-bottom: .9rem;
+  background: color-mix(in srgb, var(--accent) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: 12px; padding: .6rem .8rem; }
 .book-make { display: flex; gap: .6rem; margin: 0 0 1.2rem; }
 .book-make .btn { flex: 1; }
 
