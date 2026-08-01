@@ -229,8 +229,11 @@ async function createMoment(tripId, data = {}) {
     spend: Number(data.spend) || 0,    // 實際花費(0=無)
     currency: data.currency || '',     // 幣別(顯示用,可空)
     lat: data.lat ?? null, lng: data.lng ?? null, // 當下座標(打卡/定位)
+    weather: data.weather || null,     // 打卡當下天氣 { code, temp }(可無)
     photoId: data.photoId || null,     // 對應本機 assets 的 id(照片存本機)
     hasPhoto: !!data.photoId,          // 給別台裝置知道「有照片但在對方手機」
+    authorId: data.authorId || null,   // 誰記的(旅伴動態牆顯示用)
+    authorName: data.authorName || '', // 記錄當下的暱稱快照
     takenAt: data.takenAt || now,      // 這則的時間(照片可用檔案時間)
     public: !!parent?.public,          // 沿用旅程公開狀態
     fts: {}, createdAt: now, updatedAt: now, deleted: false,

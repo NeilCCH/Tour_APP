@@ -296,6 +296,10 @@ textarea { resize: vertical; min-height: 4.2rem; }
   background: color-mix(in srgb, var(--c, var(--accent)) 12%, var(--card)); }
 .moment-summary .ms-item b { display: block; font-size: 1.5rem; font-weight: 800; color: var(--c, var(--accent)); line-height: 1.1; }
 .moment-summary .ms-item span { font-size: .82rem; font-weight: 600; color: var(--text-dim); }
+.moment-tools { display: flex; gap: .5rem; margin-bottom: .4rem; }
+.moment-tools .btn { flex: 1; }
+.m-author { margin-left: auto; font-size: .8rem; font-weight: 700; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--card)); padding: .12rem .5rem; border-radius: 999px; }
 .timeline { margin-top: .4rem; }
 .tl-day { font-size: .92rem; font-weight: 800; color: var(--text-dim); margin: 1rem 0 .5rem; letter-spacing: .02em; }
 .moment-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px;

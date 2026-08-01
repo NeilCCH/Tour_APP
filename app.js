@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v40'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v41'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1277,6 +1277,30 @@ function getPositionOnce() {
     );
   });
 }
+// WMO 天氣代碼 → emoji(粗分類,給旅途記錄一個天氣快照)
+function wmoEmoji(code) {
+  if (code == null) return '';
+  if (code === 0) return '☀️';
+  if (code <= 2) return '🌤️';
+  if (code === 3) return '☁️';
+  if (code <= 48) return '🌫️';
+  if (code <= 57) return '🌦️';
+  if (code <= 67) return '🌧️';
+  if (code <= 77) return '🌨️';
+  if (code <= 82) return '🌧️';
+  if (code <= 86) return '🌨️';
+  return '⛈️';
+}
+// 抓當下天氣(Open-Meteo,免費、免金鑰)。失敗回 null,不影響記錄。
+async function fetchWeather(lat, lng) {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const c = (await res.json()).current;
+    return c ? { code: c.weather_code, temp: Math.round(c.temperature_2m) } : null;
+  } catch { return null; }
+}
 // 找離座標最近、且已定位的景點(回傳 {place, dist(km)})
 function nearestPlace(places, coords) {
   let best = null, bd = Infinity;
@@ -1304,7 +1328,11 @@ function momentBody(trip, places, moments) {
       <div class="ms-item" style="--c:#22b34a"><b>${visited}</b><span>造訪地</span></div>
       <div class="ms-item" style="--c:#f59e0b"><b>${totalSpend ? totalSpend.toLocaleString() : 0}</b><span>花費合計</span></div>
     </div>
-    <button class="btn ghost" id="moment-mapbtn" style="--c:#22b34a;color:#22b34a">${ic('pin')} 足跡地圖</button>
+    <div class="moment-tools">
+      <button class="btn ghost" id="moment-mapbtn" style="--c:#22b34a;color:#22b34a">${ic('pin')} 足跡地圖</button>
+      <button class="btn ghost" id="moment-batchbtn" style="--c:#0ea5e9;color:#0ea5e9">${ic('camera')} 批次匯入照片</button>
+      <input type="file" accept="image/*" multiple id="moment-batchfile" hidden>
+    </div>
     <div id="moment-map" class="mapbox" style="display:none;margin:.2rem 0 1rem"></div>`;
 
   if (!moments.length) {
@@ -1328,12 +1356,15 @@ function momentBody(trip, places, moments) {
     const metaBits = [];
     if (place) metaBits.push(`${ic('pin')} ${esc(place.name)}`);
     else if (m.lat != null) metaBits.push(`${ic('pin')} 已定位`);
+    if (m.weather) metaBits.push(`${wmoEmoji(m.weather.code)} ${esc(String(m.weather.temp))}°`);
     if (m.spend) metaBits.push(`${ic('cash')} ${esc(m.currency || '')}${Number(m.spend).toLocaleString()}`);
+    const mine = !m.authorId || m.authorId === currentUser?.id;
+    const authorTag = (!mine && m.authorName) ? `<span class="m-author">${esc(m.authorName)}</span>` : '';
     html += `
       <div class="moment-card" data-moment="${esc(m.id)}">
         ${photo}
         <div class="m-body">
-          <div class="m-top"><span class="m-time">${hhmm(m.takenAt)}</span>${m.rating ? starsView(m.rating) : ''}</div>
+          <div class="m-top"><span class="m-time">${hhmm(m.takenAt)}</span>${m.rating ? starsView(m.rating) : ''}${authorTag}</div>
           ${m.text ? `<div class="m-text">${esc(m.text)}</div>` : ''}
           ${metaBits.length ? `<div class="m-meta">${metaBits.map((b) => `<span>${b}</span>`).join('')}</div>` : ''}
         </div>
@@ -1354,6 +1385,24 @@ function wireMomentTab(trip, places, moments) {
   app.querySelectorAll('[data-moment]').forEach((c) => {
     const m = moments.find((x) => x.id === c.dataset.moment);
     c.addEventListener('click', () => openMomentSheet(trip, places, m));
+  });
+  // 批次匯入照片:一次多張,每張依檔案時間各成一則,排進時間軸
+  const batchFile = app.querySelector('#moment-batchfile');
+  const batchBtn = app.querySelector('#moment-batchbtn');
+  batchBtn?.addEventListener('click', () => batchFile.click());
+  batchFile?.addEventListener('change', async (e) => {
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    let done = 0;
+    for (const f of files) {
+      batchBtn.textContent = `匯入中… ${++done}/${files.length}`;
+      try {
+        const { dataUrl, takenAt } = await compressImage(f);
+        const photoId = await db.putAsset(dataUrl);
+        await db.createMoment(trip.id, { photoId, takenAt, authorId: currentUser?.id, authorName: displayName() });
+      } catch (_) {}
+    }
+    render();
   });
   // 足跡地圖
   let footMap = null;
@@ -1394,6 +1443,7 @@ function openMomentSheet(trip, places, moment = null) {
   let takenAt = moment?.takenAt || Date.now();
   let coords = (moment && moment.lat != null) ? { lat: moment.lat, lng: moment.lng } : null;
   let rating = moment?.rating || 0;
+  let weather = moment?.weather || null;
   const sortedPlaces = places.slice().sort((a, b) => a.createdAt - b.createdAt);
 
   openSheet(`
@@ -1462,12 +1512,14 @@ function openMomentSheet(trip, places, moment = null) {
       locMsg.style.color = 'var(--text-dim)'; locMsg.textContent = '定位中…(請允許使用位置)';
       try {
         coords = await getPositionOnce();
+        weather = await fetchWeather(coords.lat, coords.lng); // 順手抓當下天氣
+        const wx = weather ? `　${wmoEmoji(weather.code)} ${weather.temp}°` : '';
         const near = nearestPlace(places, coords);
         if (near && near.dist < 0.25 && !placeSel.value) {
           placeSel.value = near.place.id;
-          locMsg.textContent = `已記錄位置 ✓　最近景點:${near.place.name}(約 ${Math.round(near.dist * 1000)} 公尺,將標為已造訪)`;
+          locMsg.textContent = `已記錄位置 ✓${wx}　最近景點:${near.place.name}(約 ${Math.round(near.dist * 1000)} 公尺,將標為已造訪)`;
         } else {
-          locMsg.textContent = `已記錄位置 ✓ (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
+          locMsg.textContent = `已記錄位置 ✓${wx} (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
         }
       } catch (e) {
         locMsg.style.color = 'var(--danger)';
@@ -1490,13 +1542,13 @@ function openMomentSheet(trip, places, moment = null) {
         photoId = await db.putAsset(pendingDataUrl);
       }
       const patch = {
-        text, rating, spend, currency, placeId,
+        text, rating, spend, currency, placeId, weather,
         lat: coords ? coords.lat : (editing ? moment.lat : null),
         lng: coords ? coords.lng : (editing ? moment.lng : null),
         photoId, hasPhoto: !!photoId, takenAt,
       };
       if (editing) await db.updateMoment(moment.id, patch);
-      else await db.createMoment(trip.id, patch);
+      else await db.createMoment(trip.id, { ...patch, authorId: currentUser?.id, authorName: displayName() });
       if (placeId) await db.updatePlace(placeId, { status: '已造訪' }); // 關聯景點自動標為已造訪
       close(); render();
     };
