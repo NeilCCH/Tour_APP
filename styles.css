@@ -380,7 +380,12 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .bd-visited { color: #22b34a; font-size: .82rem; font-weight: 800; }
 #book-map { height: 260px; }
 
+.book-make { display: flex; gap: .6rem; margin: 0 0 1.2rem; }
+.book-make .btn { flex: 1; }
+
 /* ---- 製作旅遊書:挑素材視窗 ---- */
+.vm-progress { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; margin: .4rem 0; }
+.vm-bar { height: 100%; width: 0; background: linear-gradient(90deg, #ec4899, #8b5cf6); transition: width .2s; }
 .bm-opt { display: flex; align-items: center; gap: .5rem; font-weight: 600; margin: .3rem 0; }
 .bm-actions { display: flex; gap: .5rem; margin-bottom: .5rem; }
 .bm-list { max-height: 42vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: .1rem .6rem; }

@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v45'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v46'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1544,7 +1544,10 @@ function bookBody(trip, places, moments) {
         <div><b>${totalSpend ? totalSpend.toLocaleString() : 0}</b><span>花費</span></div>
         ${avgRating ? `<div><b>${avgRating.toFixed(1)}</b><span>平均★</span></div>` : ''}
       </div>
-      <button class="btn primary" id="book-makepdf" style="margin:0 0 1.2rem">${ic('suitcase')} 製作旅遊書 PDF(可挑素材)</button>`;
+      <div class="book-make">
+        <button class="btn primary" id="book-makepdf">${ic('suitcase')} 旅遊書 PDF</button>
+        <button class="btn primary" id="book-makevid" style="background:linear-gradient(135deg,#ec4899,#8b5cf6)">🎬 回顧影片</button>
+      </div>`;
 
   // 精選時刻:4★以上,或「有照片又有心情文字」的那幾則
   const highlights = moments.filter((m) => m.rating >= 4 || (m.photoId && m.text)).slice(0, 8);
@@ -1590,6 +1593,7 @@ function wireBookTab(trip, places, moments) {
   const box = app.querySelector('#book-map');
   if (box) renderFootprintMap(box, moments, places);
   app.querySelector('#book-makepdf')?.addEventListener('click', () => openBookMaker(trip, places, moments));
+  app.querySelector('#book-makevid')?.addEventListener('click', () => openVideoMaker(trip, places, moments));
 }
 
 // ---- 製作旅遊書 PDF:手動挑素材 → 產生可存檔的 PDF -----------------------------
@@ -1726,6 +1730,160 @@ async function generateBookPDF(trip, places, moments, opts) {
   } finally {
     root.remove();
   }
+}
+
+// ---- 製作回顧影片:挑照片 → 即時錄成投影片影片(Ken Burns + 淡入淡出)----------
+function videoSupported() {
+  try {
+    const c = document.createElement('canvas');
+    return typeof c.captureStream === 'function' && 'MediaRecorder' in window && !!pickVideoMime();
+  } catch (_) { return false; }
+}
+function pickVideoMime() {
+  const cands = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  for (const m of cands) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  return '';
+}
+function loadImg(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('圖片載入失敗')); i.src = url; }); }
+function drawCover(ctx, img, W, H, scale) {
+  const s = Math.max(W / img.width, H / img.height) * scale;
+  const w = img.width * s, h = img.height * s;
+  ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+}
+function wrapText(ctx, text, cx, cy, maxW, lh) {
+  const lines = []; let line = '';
+  for (const ch of text) {
+    if (ctx.measureText(line + ch).width > maxW && line) { lines.push(line); line = ch; } else line += ch;
+  }
+  if (line) lines.push(line);
+  const y0 = cy - (lines.length - 1) * lh / 2;
+  lines.forEach((l, i) => ctx.fillText(l, cx, y0 + i * lh));
+}
+
+function openVideoMaker(trip, places, moments) {
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const photos = moments.filter((m) => m.photoId);
+  const rows = photos.map((m) => {
+    const place = m.placeId ? byId.get(m.placeId) : null;
+    const label = [hhmm(m.takenAt), place ? place.name : '', m.text ? m.text.slice(0, 16) : ''].filter(Boolean).join(' · ') || '照片';
+    return `<label class="bm-row"><input type="checkbox" class="vm-pick" value="${esc(m.id)}" checked><img class="bm-thumb" data-asset="${esc(m.photoId)}" alt=""><span>${esc(label)}</span></label>`;
+  }).join('');
+  const supported = videoSupported();
+
+  openSheet(`
+    <h2>製作回顧影片</h2>
+    ${supported ? '' : '<p class="meta" style="color:var(--danger);margin-bottom:.6rem">這台裝置/瀏覽器不支援在網頁內生成影片。建議改用電腦的瀏覽器開啟本頁製作。</p>'}
+    <div class="lab" style="margin:.2rem 0 .4rem">影片長度</div>
+    <div class="chips" id="vm-dur">
+      <div class="chip on" data-d="60">60 秒</div>
+      <div class="chip" data-d="90">90 秒</div>
+      <div class="chip" data-d="120">120 秒</div>
+    </div>
+    <div class="lab" style="margin:.7rem 0 .4rem">選擇照片(預設全選)</div>
+    <div class="bm-actions"><button type="button" class="chip" id="vm-all">全選</button><button type="button" class="chip" id="vm-none">全不選</button></div>
+    <div class="bm-list">${photos.length ? rows : '<div class="meta">還沒有照片。先到「旅途」加幾張照片。</div>'}</div>
+    <div class="vm-progress" id="vm-progress" style="display:none"><div class="vm-bar" id="vm-bar"></div></div>
+    <div id="vm-msg" class="meta" style="min-height:1.1em;margin:.5rem 0"></div>
+    <div class="btn-row">
+      <button class="btn primary" id="vm-go" ${supported ? '' : 'disabled'}>生成影片</button>
+      <button class="btn ghost" id="vm-cancel">取消</button>
+    </div>
+  `, (sheet, close) => {
+    sheet.querySelectorAll('img[data-asset]').forEach(async (im) => {
+      const u = await db.getAsset(im.dataset.asset).catch(() => null);
+      if (u) im.src = u; else im.replaceWith(Object.assign(document.createElement('div'), { className: 'bm-thumb ph', textContent: '📷' }));
+    });
+    let dur = 60;
+    sheet.querySelector('#vm-dur').onclick = (e) => {
+      const chip = e.target.closest('.chip'); if (!chip) return;
+      dur = Number(chip.dataset.d);
+      sheet.querySelectorAll('#vm-dur .chip').forEach((c) => c.classList.toggle('on', c === chip));
+    };
+    const picks = () => [...sheet.querySelectorAll('.vm-pick')];
+    sheet.querySelector('#vm-all').onclick = () => picks().forEach((c) => { c.checked = true; });
+    sheet.querySelector('#vm-none').onclick = () => picks().forEach((c) => { c.checked = false; });
+    sheet.querySelector('#vm-cancel').onclick = close;
+    sheet.querySelector('#vm-go').onclick = async () => {
+      const ids = new Set(picks().filter((c) => c.checked).map((c) => c.value));
+      const msg = sheet.querySelector('#vm-msg');
+      const go = sheet.querySelector('#vm-go');
+      const bar = sheet.querySelector('#vm-bar');
+      const prog = sheet.querySelector('#vm-progress');
+      if (!ids.size) { msg.style.color = 'var(--danger)'; msg.textContent = '至少選一張照片。'; return; }
+      go.disabled = true; prog.style.display = 'block';
+      msg.style.color = 'var(--text-dim)'; msg.textContent = `錄製中…約 ${dur} 秒,過程請保持畫面開啟、別切走。`;
+      try {
+        const chosen = photos.filter((m) => ids.has(m.id));
+        const urls = [];
+        for (const m of chosen) { const u = await db.getAsset(m.photoId).catch(() => null); if (u) urls.push(u); }
+        if (!urls.length) throw new Error('選到的照片都不在本機');
+        const imgs = await Promise.all(urls.map(loadImg));
+        const blob = await generateVideoBlob(trip.name, imgs, dur, (p) => { bar.style.width = Math.round(p * 100) + '%'; });
+        const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+        const file = new File([blob], `回顧影片-${trip.name}.${ext}`, { type: blob.type });
+        msg.style.color = 'var(--accent)'; msg.textContent = '完成!在跳出的視窗選「儲存影片 / 儲存到檔案」。';
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: trip.name }); } catch (e) { if (e.name !== 'AbortError') throw e; }
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 3000);
+        }
+      } catch (e) {
+        msg.style.color = 'var(--danger)'; msg.textContent = '生成失敗:' + (e.message || e);
+      } finally {
+        go.disabled = false; prog.style.display = 'none'; bar.style.width = '0%';
+      }
+    };
+  });
+}
+
+// 即時把照片畫成投影片並錄成影片(1080×1350,標題卡 + Ken Burns + 淡入淡出)
+async function generateVideoBlob(title, imgs, durationSec, onProgress) {
+  const W = 1080, H = 1350, fps = 30;
+  const mime = pickVideoMime();
+  if (!mime) throw new Error('此瀏覽器不支援影片錄製');
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const stream = canvas.captureStream(fps);
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+  const chunks = []; rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  const stopped = new Promise((r) => { rec.onstop = r; });
+  const titleSec = 2.0;
+  const n = imgs.length;
+  const perPhoto = (durationSec - titleSec) / n;
+  const fade = Math.min(0.6, perPhoto * 0.3);
+  rec.start();
+  const start = performance.now();
+  await new Promise((resolve) => {
+    function frame(now) {
+      const t = (now - start) / 1000;
+      if (t >= durationSec) { resolve(); return; }
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      if (t < titleSec) {
+        ctx.fillStyle = '#0b1f4b'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '700 66px sans-serif';
+        wrapText(ctx, title, W / 2, H / 2, W - 160, 84);
+      } else {
+        const tt = t - titleSec;
+        let idx = Math.floor(tt / perPhoto); if (idx >= n) idx = n - 1;
+        const local = tt - idx * perPhoto;
+        drawCover(ctx, imgs[idx], W, H, 1.05 + 0.12 * (local / perPhoto)); // Ken Burns 緩慢放大
+        if (idx < n - 1 && local > perPhoto - fade) {
+          ctx.globalAlpha = (local - (perPhoto - fade)) / fade;
+          drawCover(ctx, imgs[idx + 1], W, H, 1.05);
+          ctx.globalAlpha = 1;
+        }
+      }
+      onProgress && onProgress(Math.min(1, t / durationSec));
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+  rec.stop();
+  await stopped;
+  return new Blob(chunks, { type: mime });
 }
 
 // 「記一筆 / 編輯記錄」表單。prefill:靠近提示打卡時預先帶入 {coords, placeId, weather}。
