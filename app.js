@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v44'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v45'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1543,7 +1543,8 @@ function bookBody(trip, places, moments) {
         <div><b>${moments.length}</b><span>點滴</span></div>
         <div><b>${totalSpend ? totalSpend.toLocaleString() : 0}</b><span>花費</span></div>
         ${avgRating ? `<div><b>${avgRating.toFixed(1)}</b><span>平均★</span></div>` : ''}
-      </div>`;
+      </div>
+      <button class="btn primary" id="book-makepdf" style="margin:0 0 1.2rem">${ic('suitcase')} 製作旅遊書 PDF(可挑素材)</button>`;
 
   // 精選時刻:4★以上,或「有照片又有心情文字」的那幾則
   const highlights = moments.filter((m) => m.rating >= 4 || (m.photoId && m.text)).slice(0, 8);
@@ -1583,11 +1584,148 @@ function bookBody(trip, places, moments) {
   return html;
 }
 
-// 回顧頁事件:補上本機照片、畫足跡地圖
+// 回顧頁事件:補上本機照片、畫足跡地圖、製作 PDF
 function wireBookTab(trip, places, moments) {
   fillLocalAssets();
   const box = app.querySelector('#book-map');
   if (box) renderFootprintMap(box, moments, places);
+  app.querySelector('#book-makepdf')?.addEventListener('click', () => openBookMaker(trip, places, moments));
+}
+
+// ---- 製作旅遊書 PDF:手動挑素材 → 產生可存檔的 PDF -----------------------------
+// 產 PDF 用「把畫面拍成圖再組頁」的方式(html2pdf,執行時從 CDN 載入),
+// 這樣中文能靠瀏覽器字型正常渲染(純 jsPDF 內建字型不支援中文)。
+function openBookMaker(trip, places, moments) {
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const materials = moments.filter((m) => m.photoId || m.text || m.rating || m.spend);
+  const rows = materials.map((m) => {
+    const place = m.placeId ? byId.get(m.placeId) : null;
+    const label = [hhmm(m.takenAt), place ? place.name : '', m.text ? m.text.slice(0, 18) : ''].filter(Boolean).join(' · ') || '記錄';
+    const thumb = m.photoId ? `<img class="bm-thumb" data-asset="${esc(m.photoId)}" alt="">` : `<div class="bm-thumb ph">${m.text ? '📝' : (m.rating ? '★' : '📍')}</div>`;
+    return `<label class="bm-row"><input type="checkbox" class="bm-pick" value="${esc(m.id)}" checked>${thumb}<span>${esc(label)}</span></label>`;
+  }).join('');
+
+  openSheet(`
+    <h2>製作旅遊書 PDF</h2>
+    <label class="field"><span class="lab">書名</span>
+      <input id="bm-title" value="${esc(trip.name)}"></label>
+    <div class="lab" style="margin:.2rem 0 .4rem">要包含的區塊</div>
+    <label class="bm-opt"><input type="checkbox" id="bm-cover" checked> 封面</label>
+    <label class="bm-opt"><input type="checkbox" id="bm-stats" checked> 數字回顧</label>
+    <div class="lab" style="margin:.6rem 0 .4rem">選擇素材(預設全選,取消不想放的)</div>
+    <div class="bm-actions"><button type="button" class="chip" id="bm-all">全選</button><button type="button" class="chip" id="bm-none">全不選</button></div>
+    <div class="bm-list">${materials.length ? rows : '<div class="meta">還沒有可放進旅遊書的記錄。先到「旅途」記幾筆。</div>'}</div>
+    <div id="bm-msg" class="meta" style="min-height:1.1em;margin:.5rem 0"></div>
+    <div class="btn-row">
+      <button class="btn primary" id="bm-go">生成 PDF</button>
+      <button class="btn ghost" id="bm-cancel">取消</button>
+    </div>
+  `, (sheet, close) => {
+    sheet.querySelectorAll('img[data-asset]').forEach(async (im) => {
+      const u = await db.getAsset(im.dataset.asset).catch(() => null);
+      if (u) im.src = u; else im.replaceWith(Object.assign(document.createElement('div'), { className: 'bm-thumb ph', textContent: '📷' }));
+    });
+    const picks = () => [...sheet.querySelectorAll('.bm-pick')];
+    sheet.querySelector('#bm-all').onclick = () => picks().forEach((c) => { c.checked = true; });
+    sheet.querySelector('#bm-none').onclick = () => picks().forEach((c) => { c.checked = false; });
+    sheet.querySelector('#bm-cancel').onclick = close;
+    sheet.querySelector('#bm-go').onclick = async () => {
+      const opts = {
+        title: sheet.querySelector('#bm-title').value.trim() || trip.name,
+        cover: sheet.querySelector('#bm-cover').checked,
+        stats: sheet.querySelector('#bm-stats').checked,
+        momentIds: new Set(picks().filter((c) => c.checked).map((c) => c.value)),
+      };
+      const msg = sheet.querySelector('#bm-msg');
+      const go = sheet.querySelector('#bm-go');
+      if (!opts.momentIds.size && !opts.cover && !opts.stats) { msg.style.color = 'var(--danger)'; msg.textContent = '至少選一個區塊或一則素材。'; return; }
+      go.disabled = true; msg.style.color = 'var(--text-dim)'; msg.textContent = '產生中…(第一次會下載排版元件,約幾秒,請稍候)';
+      try {
+        await generateBookPDF(trip, places, moments, opts);
+        msg.style.color = 'var(--accent)'; msg.textContent = '完成!在跳出的視窗選「儲存到檔案」即可。';
+        setTimeout(close, 1000);
+      } catch (e) {
+        msg.style.color = 'var(--danger)'; msg.textContent = '產生失敗:' + (e.message || e) + '(需要網路載入排版元件)';
+        go.disabled = false;
+      }
+    };
+  });
+}
+
+// 組出旅遊書的列印用 HTML(白底黑字,獨立於 App 主題)
+function pdfBookHtml(trip, places, chosen, opts, photoUrls) {
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const dayCount = tripDayCount(trip, places);
+  let h = '';
+  if (opts.cover) {
+    const flag = trip.country ? flagOf(trip.country) : '';
+    h += `<section class="pb-cover"><div class="pb-flag">${flag || '🧳'}</div>
+      <h1>${esc(opts.title || trip.name)}</h1>
+      <div class="pb-sub">${esc(fmtDateRange(trip.startDate, trip.endDate))}${trip.country ? ' · ' + esc(countryName(trip.country)) : ''}</div></section>`;
+  }
+  if (opts.stats) {
+    const visited = places.filter((p) => p.status === '已造訪').length;
+    const totalSpend = chosen.reduce((s, m) => s + (Number(m.spend) || 0), 0);
+    h += `<section class="pb-stats">
+      <div><b>${dayCount}</b><span>天</span></div>
+      <div><b>${visited}</b><span>造訪地</span></div>
+      <div><b>${chosen.length}</b><span>入選點滴</span></div>
+      ${totalSpend ? `<div><b>${totalSpend.toLocaleString()}</b><span>花費</span></div>` : ''}</section>`;
+  }
+  const groups = new Map();
+  chosen.slice().sort((a, b) => (a.takenAt || 0) - (b.takenAt || 0)).forEach((m) => {
+    const k = dayKey(m.takenAt);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(m);
+  });
+  for (const list of groups.values()) {
+    h += `<section class="pb-day"><h2>${dayLabel(list[0].takenAt)}</h2>`;
+    for (const m of list) {
+      const place = m.placeId ? byId.get(m.placeId) : null;
+      const url = photoUrls[m.id];
+      const caps = [hhmm(m.takenAt)];
+      if (place) caps.push(esc(place.name));
+      if (m.weather) caps.push(`${wmoEmoji(m.weather.code)} ${m.weather.temp}°`);
+      if (m.rating) caps.push('★'.repeat(m.rating));
+      if (m.spend) caps.push(`${esc(m.currency || '')}${Number(m.spend).toLocaleString()}`);
+      h += `<div class="pb-item">${url ? `<img src="${url}" alt="">` : ''}
+        <div class="pb-cap">${caps.join(' · ')}</div>
+        ${m.text ? `<div class="pb-text">${esc(m.text)}</div>` : ''}</div>`;
+    }
+    h += `</section>`;
+  }
+  return h;
+}
+
+async function generateBookPDF(trip, places, moments, opts) {
+  const mod = await import('https://esm.sh/html2pdf.js@0.10.2');
+  const html2pdf = mod.default || mod;
+  const chosen = moments.filter((m) => opts.momentIds.has(m.id));
+  const photoUrls = {};
+  for (const m of chosen) if (m.photoId) photoUrls[m.id] = await db.getAsset(m.photoId).catch(() => null);
+  const root = document.createElement('div');
+  root.className = 'pdf-book';
+  root.innerHTML = pdfBookHtml(trip, places, chosen, opts, photoUrls);
+  document.body.appendChild(root);
+  try {
+    const blob = await html2pdf().set({
+      margin: [10, 10, 12, 10],
+      image: { type: 'jpeg', quality: 0.92 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] },
+    }).from(root).outputPdf('blob');
+    const file = new File([blob], `旅遊書-${opts.title}.pdf`, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: opts.title }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } finally {
+    root.remove();
+  }
 }
 
 // 「記一筆 / 編輯記錄」表單。prefill:靠近提示打卡時預先帶入 {coords, placeId, weather}。

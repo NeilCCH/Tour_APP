@@ -264,6 +264,8 @@ input, select, textarea {
   background: var(--card); color: var(--text); font-family: inherit;
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex: none; padding: 0; border: none;
+  box-shadow: none; accent-color: var(--accent); }
 textarea { resize: vertical; min-height: 4.2rem; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
 
@@ -377,6 +379,33 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .bd-tags { display: flex; align-items: center; gap: .6rem; margin-top: .25rem; }
 .bd-visited { color: #22b34a; font-size: .82rem; font-weight: 800; }
 #book-map { height: 260px; }
+
+/* ---- 製作旅遊書:挑素材視窗 ---- */
+.bm-opt { display: flex; align-items: center; gap: .5rem; font-weight: 600; margin: .3rem 0; }
+.bm-actions { display: flex; gap: .5rem; margin-bottom: .5rem; }
+.bm-list { max-height: 42vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: .1rem .6rem; }
+.bm-row { display: flex; align-items: center; gap: .6rem; padding: .45rem 0; border-bottom: 1px solid var(--border); font-size: .95rem; }
+.bm-row:last-child { border-bottom: none; }
+.bm-thumb { width: 2.6rem; height: 2.6rem; border-radius: 8px; object-fit: cover; flex: none; }
+.bm-thumb.ph { display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+.bm-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- 旅遊書 PDF 版面(白底黑字,離螢幕渲染)---- */
+.pdf-book { position: absolute; left: -9999px; top: 0; width: 794px; background: #fff; color: #111; }
+.pdf-book .pb-cover { text-align: center; padding: 60px 40px 24px; }
+.pdf-book .pb-flag { font-size: 66px; line-height: 1; }
+.pdf-book .pb-cover h1 { font-size: 30px; font-weight: 800; margin: 14px 0 6px; }
+.pdf-book .pb-sub { color: #555; font-size: 15px; }
+.pdf-book .pb-stats { display: flex; gap: 10px; padding: 6px 40px 18px; }
+.pdf-book .pb-stats > div { flex: 1; text-align: center; border: 1px solid #ddd; border-radius: 8px; padding: 8px 4px; }
+.pdf-book .pb-stats b { display: block; font-size: 20px; font-weight: 800; color: #1f6feb; }
+.pdf-book .pb-stats span { font-size: 11px; color: #666; }
+.pdf-book .pb-day { padding: 0 40px; }
+.pdf-book .pb-day h2 { font-size: 18px; font-weight: 800; border-bottom: 2px solid #1f6feb; padding-bottom: 4px; margin: 20px 0 12px; }
+.pdf-book .pb-item { margin-bottom: 16px; page-break-inside: avoid; }
+.pdf-book .pb-item img { width: 100%; border-radius: 8px; display: block; }
+.pdf-book .pb-cap { font-size: 12px; color: #666; margin-top: 6px; font-weight: 600; }
+.pdf-book .pb-text { font-size: 14px; line-height: 1.65; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
 
 /* ---- 按鈕 ---- */
 .btn {
