@@ -112,8 +112,11 @@ begin
     raise exception 'invalid invite';
   end if;
   update public.trips
-     set data = jsonb_set(data, '{members}',
-                  coalesce(data->'members', '[]'::jsonb) || to_jsonb(auth.uid()::text)),
+     set data = jsonb_set(
+                  jsonb_set(
+                    jsonb_set(data, '{fts}', coalesce(data->'fts','{}'::jsonb)),
+                    '{members}', coalesce(data->'members','[]'::jsonb) || to_jsonb(auth.uid()::text)),
+                  '{fts,members}', to_jsonb((extract(epoch from now())*1000)::bigint)),
          updated_at = (extract(epoch from now()) * 1000)::bigint
    where id = p_trip_id
      and not (coalesce(data->'members', '[]'::jsonb) ? auth.uid()::text);
@@ -181,8 +184,11 @@ begin
    where id = p_invite and invitee_id = auth.uid() and status = 'pending';
   if v_trip is null then raise exception 'invite not found'; end if;
   update public.trips
-     set data = jsonb_set(data, '{members}',
-                  coalesce(data->'members','[]'::jsonb) || to_jsonb(auth.uid()::text)),
+     set data = jsonb_set(
+                  jsonb_set(
+                    jsonb_set(data, '{fts}', coalesce(data->'fts','{}'::jsonb)),
+                    '{members}', coalesce(data->'members','[]'::jsonb) || to_jsonb(auth.uid()::text)),
+                  '{fts,members}', to_jsonb((extract(epoch from now())*1000)::bigint)),
          updated_at = (extract(epoch from now())*1000)::bigint
    where id = v_trip and not (coalesce(data->'members','[]'::jsonb) ? auth.uid()::text);
   update public.invitations set status = 'accepted' where id = p_invite;
@@ -198,9 +204,13 @@ begin
     raise exception 'not owner';
   end if;
   update public.trips
-     set data = jsonb_set(data, '{members}',
-                  coalesce((select jsonb_agg(x) from jsonb_array_elements_text(coalesce(data->'members','[]'::jsonb)) x
-                            where x <> p_member), '[]'::jsonb)),
+     set data = jsonb_set(
+                  jsonb_set(
+                    jsonb_set(data, '{fts}', coalesce(data->'fts','{}'::jsonb)),
+                    '{members}',
+                    coalesce((select jsonb_agg(x) from jsonb_array_elements_text(coalesce(data->'members','[]'::jsonb)) x
+                              where x <> p_member), '[]'::jsonb)),
+                  '{fts,members}', to_jsonb((extract(epoch from now())*1000)::bigint)),
          updated_at = (extract(epoch from now())*1000)::bigint
    where id = p_trip;
 end; $$;
