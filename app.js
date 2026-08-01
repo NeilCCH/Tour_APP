@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v43'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v44'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1905,6 +1905,32 @@ async function initCloud() {
   updateAcct();
 }
 
+// ---- 備份 / 還原(把整個本機資料庫含照片語音打包成一個檔)---------------------
+async function exportBackup() {
+  const data = {};
+  for (const s of ['trips', 'places', 'moments', 'assets']) data[s] = await db._sync.allRaw(s);
+  const fname = `tour-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const blob = new Blob([JSON.stringify({ app: 'tour', version: 1, exportedAt: Date.now(), data })], { type: 'application/json' });
+  const file = new File([blob], fname, { type: 'application/json' });
+  // iOS 優先用分享單(可存到「檔案」/iCloud/寄給自己);不支援才走下載
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: '旅程備份' }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+async function importBackup(file) {
+  const parsed = JSON.parse(await file.text());
+  if (!parsed || parsed.app !== 'tour' || !parsed.data) throw new Error('不是有效的旅程備份檔');
+  let n = 0;
+  for (const s of ['trips', 'places', 'moments', 'assets']) {
+    for (const rec of (parsed.data[s] || [])) { await db._sync.putRaw(s, rec); n++; }
+  }
+  return n;
+}
+
 function openAuthSheet() {
   if (!cloud) { alert('雲端功能載入失敗（可能離線或被網路阻擋）。App 仍可離線使用,資料存在本機。'); return; }
 
@@ -1918,12 +1944,36 @@ function openAuthSheet() {
           <input id="a-nick" value="${esc(nickname)}" placeholder="例如：Neo">
           <button type="button" class="btn ghost" id="a-nicksave" style="width:auto;padding:.6rem 1rem">儲存</button>
         </div></label>
+      <div class="section-title" style="margin-top:.4rem">備份與還原</div>
+      <p class="meta" style="margin-bottom:.5rem">文字類資料已在雲端;照片/語音只存本機,建議測試前先匯出一份到「檔案」App / iCloud。</p>
+      <input type="file" accept="application/json,.json" id="a-restorefile" hidden>
+      <div style="display:flex;gap:.5rem;margin-bottom:1rem">
+        <button type="button" class="btn ghost" id="a-backup" style="flex:1;--c:#0ea5e9;color:#0ea5e9">${ic('suitcase')} 匯出備份</button>
+        <button type="button" class="btn ghost" id="a-restore" style="flex:1">還原備份</button>
+      </div>
       <div class="btn-row">
         <button class="btn primary" id="a-sync">立即同步</button>
         <button class="btn danger" id="a-out">登出</button>
         <button class="btn ghost" id="a-cancel">關閉</button>
       </div>`, (sheet, close) => {
       sheet.querySelector('#a-cancel').onclick = close;
+      sheet.querySelector('#a-backup').onclick = async () => {
+        const b = sheet.querySelector('#a-backup'); const t = b.innerHTML; b.textContent = '準備中…';
+        try { await exportBackup(); b.textContent = '已匯出 ✓'; } catch (_) { b.textContent = '匯出失敗'; }
+        setTimeout(() => { b.innerHTML = t; }, 1600);
+      };
+      const rf = sheet.querySelector('#a-restorefile');
+      sheet.querySelector('#a-restore').onclick = () => rf.click();
+      rf.onchange = async (e) => {
+        const f = e.target.files && e.target.files[0]; if (!f) return;
+        if (!confirm('還原會用備份檔覆蓋本機「相同項目」的資料(以較舊的備份覆蓋現況)。確定要還原?')) { rf.value = ''; return; }
+        try {
+          const n = await importBackup(f);
+          await cloud.fullSync?.().catch(() => {});
+          alert(`已還原 ${n} 筆資料(含照片/語音)。`);
+          close(); render();
+        } catch (err) { alert('還原失敗:' + (err.message || err)); }
+      };
       sheet.querySelector('#a-nicksave').onclick = async () => {
         const nk = sheet.querySelector('#a-nick').value.trim();
         if (!nk) return;

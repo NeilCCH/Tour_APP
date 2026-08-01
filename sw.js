@@ -8,7 +8,7 @@
 //
 // 改版須知:更新外殼檔案後,把下面的 CACHE 版本號 +1,離線快取就會刷新。
 
-const CACHE = 'tour-v43';
+const CACHE = 'tour-v44';
 
 const SHELL = [
   './',
