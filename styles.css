@@ -287,6 +287,39 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .mapbox .leaflet-container { height: 100%; font-family: inherit; }
 .map-pin .pin-dot { width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
   border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.5); }
+.map-pin .pin-dot.plan { width: 16px; height: 16px; background: #3b82f6; }
+.map-pin .pin-dot.foot { background: #22b34a; }
+
+/* ---- 旅途:摘要 / 時間軸 / 記錄卡 ---- */
+.moment-summary { display: flex; gap: .6rem; margin-bottom: .8rem; }
+.moment-summary .ms-item { flex: 1; text-align: center; border-radius: 14px; padding: .7rem .4rem;
+  background: color-mix(in srgb, var(--c, var(--accent)) 12%, var(--card)); }
+.moment-summary .ms-item b { display: block; font-size: 1.5rem; font-weight: 800; color: var(--c, var(--accent)); line-height: 1.1; }
+.moment-summary .ms-item span { font-size: .82rem; font-weight: 600; color: var(--text-dim); }
+.timeline { margin-top: .4rem; }
+.tl-day { font-size: .92rem; font-weight: 800; color: var(--text-dim); margin: 1rem 0 .5rem; letter-spacing: .02em; }
+.moment-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: var(--shadow); overflow: hidden; margin-bottom: .7rem; cursor: pointer; }
+.moment-card:active { transform: scale(.99); }
+.moment-card .m-photo img { width: 100%; display: block; max-height: 60vh; object-fit: cover; }
+.moment-card .m-photo.ph { padding: 1.4rem; text-align: center; color: var(--text-dim); background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+.moment-card .m-body { padding: .75rem .9rem .85rem; }
+.m-top { display: flex; align-items: center; gap: .6rem; }
+.m-time { font-size: .9rem; font-weight: 800; color: var(--text-dim); }
+.m-stars { color: #f59e0b; font-size: 1rem; letter-spacing: 1px; }
+.m-stars .off { color: color-mix(in srgb, var(--text-dim) 40%, transparent); }
+.m-text { margin-top: .35rem; font-size: 1.02rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.m-meta { display: flex; flex-wrap: wrap; gap: .4rem .9rem; margin-top: .5rem; color: var(--text-dim); font-size: .9rem; font-weight: 600; }
+.m-meta span { display: inline-flex; align-items: center; gap: .25rem; }
+
+/* 記一筆表單:照片預覽 + 星等挑選 */
+.m-preview { margin-top: .5rem; }
+.m-preview img { width: 100%; border-radius: 12px; display: block; }
+.starpick { display: flex; flex-wrap: wrap; gap: .3rem; }
+.starpick .star { width: auto; flex: none; padding: .35rem .55rem; font-size: 1.4rem; line-height: 1;
+  border-radius: 10px; border: 1.5px solid var(--border); background: var(--card); color: color-mix(in srgb, var(--text-dim) 45%, transparent); }
+.starpick .star.on { color: #f59e0b; border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 12%, var(--card)); }
+.starpick .star.clear { font-size: .95rem; font-weight: 700; color: var(--text-dim); padding: .35rem .7rem; }
 
 /* ---- 按鈕 ---- */
 .btn {

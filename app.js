@@ -10,9 +10,9 @@
 // ---------------------------------------------------------------------------
 
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
-import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters } from './geo.js';
+import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v39'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v40'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -36,6 +36,7 @@ const ICONS = {
   pushpin: '<path fill-rule="evenodd" d="M12 2a6.5 6.5 0 0 0-6.5 6.5C5.5 13 12 21 12 21s6.5-8 6.5-12.5A6.5 6.5 0 0 0 12 2zm0 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>',
   sparkle: '<path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/>',
   edit: '<path d="M4 20h4L18.5 9.5a2 2 0 0 0-2.8-2.8L5 17.2V20z"/><path d="M14.5 7.5l2.8 2.8"/>',
+  camera: '<path d="M4 8.8A2 2 0 0 1 6 6.8h1.3l.9-1.5a1 1 0 0 1 .9-.5h5.8a1 1 0 0 1 .9.5l.9 1.5H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.6" r="3.1"/>',
 };
 const FILLED = new Set(['pushpin', 'sparkle']);
 function ic(name) {
@@ -82,6 +83,14 @@ const COUNTRIES = [
   { code: 'AU', name: '澳洲' }, { code: 'NZ', name: '紐西蘭' }, { code: 'EG', name: '埃及' },
 ];
 const countryName = (code) => COUNTRIES.find((c) => c.code === code)?.name || '';
+// 各國常用幣別(旅途花費預設帶入,可自行改)
+const CURRENCY = {
+  JP: 'JPY', KR: 'KRW', TW: 'NT$', CN: 'CNY', HK: 'HKD', MO: 'MOP', TH: 'THB', VN: 'VND',
+  SG: 'SGD', MY: 'MYR', ID: 'IDR', PH: 'PHP', KH: 'KHR', IN: 'INR', AE: 'AED', TR: 'TRY',
+  US: 'USD', CA: 'CAD', GB: 'GBP', FR: 'EUR', DE: 'EUR', IT: 'EUR', ES: 'EUR', AT: 'EUR',
+  NL: 'EUR', CH: 'CHF', CZ: 'CZK', AU: 'AUD', NZ: 'NZD', EG: 'EGP',
+};
+const countryCurrency = (code) => CURRENCY[code] || '';
 // ISO 兩碼 → 國旗 emoji(用區域指示符號組成;iOS 會顯示成真正的旗子)
 function flagOf(code) {
   if (!code || !/^[A-Za-z]{2}$/.test(code)) return '';
@@ -575,23 +584,26 @@ async function renderTrip(trip) {
       </div>
     </div>`;
 
-  let body;
-  if (places.length === 0) {
+  const tabs = `
+    <div class="tabs">
+      <button class="tab ${tripTab === 'list' ? 'on' : ''}" data-tab="list">清單</button>
+      <button class="tab ${tripTab === 'plan' ? 'on' : ''}" data-tab="plan">行程</button>
+      <button class="tab ${tripTab === 'trip' ? 'on' : ''}" data-tab="trip">旅途</button>
+    </div>`;
+  let body, moments = [];
+  if (tripTab === 'trip') {
+    moments = await db.listMoments(trip.id);
+    body = momentBody(trip, places, moments);
+  } else if (places.length === 0) {
     body = `
       <div class="empty">
         <div class="big">${ic('pin')}</div>
         <p>這趟旅程還沒有地點。<br>點右下角的 <b>＋</b> 手動新增第一個地點。</p>
       </div>`;
-    app.innerHTML = head + body;
   } else {
-    const tabs = `
-      <div class="tabs">
-        <button class="tab ${tripTab === 'list' ? 'on' : ''}" data-tab="list">清單</button>
-        <button class="tab ${tripTab === 'plan' ? 'on' : ''}" data-tab="plan">行程</button>
-      </div>`;
     body = tripTab === 'plan' ? planBody(trip, places, dayCount) : listBody(places);
-    app.innerHTML = head + tabs + body;
   }
+  app.innerHTML = head + tabs + body;
 
   // 分頁切換
   app.querySelectorAll('[data-tab]').forEach((b) =>
@@ -633,7 +645,9 @@ async function renderTrip(trip) {
   });
   app.querySelector('#suggest')?.addEventListener('click', () => suggestArrange(trip, places, dayCount));
 
-  setFab(() => openPlaceSheet(trip.id));
+  if (tripTab === 'trip') wireMomentTab(trip, places, moments);
+
+  setFab(() => (tripTab === 'trip' ? openMomentSheet(trip, places) : openPlaceSheet(trip.id)));
 }
 
 // 建議安排:把「已定位」的地點依距離分成 dayCount 天,每天就近排序（PRD 4.2）
@@ -1231,6 +1245,269 @@ function openPlaceSheet(tripId, place = null) {
       await db.deletePlace(place.id);
       close(); render();
     };
+  });
+}
+
+// ---- 旅途:時間軸記錄(文字/照片/打卡/評分/花費)+ 足跡地圖 -------------------
+// 照片壓縮成合理大小的 JPEG(存本機,不上雲端);回傳 dataURL 與拍攝時間。
+function compressImage(file, maxDim = 1600, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (Math.max(w, h) > maxDim) { const s = maxDim / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve({ dataUrl: c.toDataURL('image/jpeg', quality), takenAt: file.lastModified || Date.now() });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('讀取圖片失敗')); };
+    img.src = url;
+  });
+}
+// 抓一次目前位置(僅前景;iOS 無法背景定位)
+function getPositionOnce() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('此裝置不支援定位'));
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (e) => reject(e),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  });
+}
+// 找離座標最近、且已定位的景點(回傳 {place, dist(km)})
+function nearestPlace(places, coords) {
+  let best = null, bd = Infinity;
+  for (const p of places) {
+    if (p.lat == null || p.lng == null) continue;
+    const d = haversine(coords, { lat: p.lat, lng: p.lng });
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best ? { place: best, dist: bd } : null;
+}
+const two = (n) => String(n).padStart(2, '0');
+const hhmm = (ts) => { const d = new Date(ts); return `${two(d.getHours())}:${two(d.getMinutes())}`; };
+const dayKey = (ts) => { const d = new Date(ts); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`; };
+const dayLabel = (ts) => { const d = new Date(ts); const wd = ['日','一','二','三','四','五','六'][d.getDay()]; return `${d.getMonth() + 1}月${d.getDate()}日（${wd}）`; };
+const starsView = (n) => `<span class="m-stars">${'★'.repeat(n)}<span class="off">${'★'.repeat(5 - n)}</span></span>`;
+
+// 「旅途」分頁內容:摘要 + 足跡地圖 + 時間軸
+function momentBody(trip, places, moments) {
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const visited = places.filter((p) => p.status === '已造訪').length;
+  const totalSpend = moments.reduce((s, m) => s + (Number(m.spend) || 0), 0);
+  const summary = `
+    <div class="moment-summary">
+      <div class="ms-item" style="--c:#f472b6"><b>${moments.length}</b><span>記錄</span></div>
+      <div class="ms-item" style="--c:#22b34a"><b>${visited}</b><span>造訪地</span></div>
+      <div class="ms-item" style="--c:#f59e0b"><b>${totalSpend ? totalSpend.toLocaleString() : 0}</b><span>花費合計</span></div>
+    </div>
+    <button class="btn ghost" id="moment-mapbtn" style="--c:#22b34a;color:#22b34a">${ic('pin')} 足跡地圖</button>
+    <div id="moment-map" class="mapbox" style="display:none;margin:.2rem 0 1rem"></div>`;
+
+  if (!moments.length) {
+    return summary + `
+      <div class="empty">
+        <div class="big">${ic('sparkle')}</div>
+        <p>旅途中的第一筆記錄從這裡開始。<br>點右下角的 <b>＋</b> 記下當下的照片、心情或位置。</p>
+      </div>`;
+  }
+
+  // 依日期分組(已由 db 依 takenAt 由新到舊排序)
+  let html = summary + '<div class="timeline">';
+  let curKey = null;
+  for (const m of moments) {
+    const k = dayKey(m.takenAt);
+    if (k !== curKey) { curKey = k; html += `<div class="tl-day">${dayLabel(m.takenAt)}</div>`; }
+    const place = m.placeId ? byId.get(m.placeId) : null;
+    const photo = m.photoId
+      ? `<div class="m-photo"><img data-asset="${esc(m.photoId)}" alt="旅途照片"></div>`
+      : (m.hasPhoto ? '<div class="m-photo ph">📷 照片存在拍攝的裝置上</div>' : '');
+    const metaBits = [];
+    if (place) metaBits.push(`${ic('pin')} ${esc(place.name)}`);
+    else if (m.lat != null) metaBits.push(`${ic('pin')} 已定位`);
+    if (m.spend) metaBits.push(`${ic('cash')} ${esc(m.currency || '')}${Number(m.spend).toLocaleString()}`);
+    html += `
+      <div class="moment-card" data-moment="${esc(m.id)}">
+        ${photo}
+        <div class="m-body">
+          <div class="m-top"><span class="m-time">${hhmm(m.takenAt)}</span>${m.rating ? starsView(m.rating) : ''}</div>
+          ${m.text ? `<div class="m-text">${esc(m.text)}</div>` : ''}
+          ${metaBits.length ? `<div class="m-meta">${metaBits.map((b) => `<span>${b}</span>`).join('')}</div>` : ''}
+        </div>
+      </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+// 「旅途」分頁的事件:照片載入、卡片點擊編輯、足跡地圖
+function wireMomentTab(trip, places, moments) {
+  // 非同步把本機照片塞進 <img>
+  app.querySelectorAll('img[data-asset]').forEach(async (im) => {
+    const url = await db.getAsset(im.dataset.asset).catch(() => null);
+    if (url) im.src = url; else im.closest('.m-photo')?.replaceChildren(document.createTextNode('📷 照片已不在本機'));
+  });
+  // 點卡片 → 編輯該則
+  app.querySelectorAll('[data-moment]').forEach((c) => {
+    const m = moments.find((x) => x.id === c.dataset.moment);
+    c.addEventListener('click', () => openMomentSheet(trip, places, m));
+  });
+  // 足跡地圖
+  let footMap = null;
+  app.querySelector('#moment-mapbtn')?.addEventListener('click', async () => {
+    const box = app.querySelector('#moment-map');
+    const showing = box.style.display !== 'none';
+    if (showing) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    const pts = moments.filter((m) => m.lat != null && m.lng != null);
+    const placePts = places.filter((p) => p.lat != null && p.lng != null);
+    if (!pts.length && !placePts.length) { box.innerHTML = '<div class="meta" style="padding:1rem">還沒有任何帶座標的記錄或景點。打卡或替景點定位後,足跡就會出現在這裡。</div>'; return; }
+    try {
+      const L = await loadLeaflet();
+      if (footMap) { setTimeout(() => footMap.invalidateSize(), 60); return; }
+      footMap = L.map(box);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(footMap);
+      const all = [];
+      placePts.forEach((p) => {
+        const icon = L.divIcon({ className: 'map-pin', html: '<div class="pin-dot plan"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+        L.marker([p.lat, p.lng], { icon }).addTo(footMap).bindPopup(esc(p.name));
+        all.push([p.lat, p.lng]);
+      });
+      pts.forEach((m) => {
+        const icon = L.divIcon({ className: 'map-pin', html: '<div class="pin-dot foot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+        L.marker([m.lat, m.lng], { icon }).addTo(footMap).bindPopup(`${hhmm(m.takenAt)}${m.text ? '・' + esc(m.text.slice(0, 20)) : ''}`);
+        all.push([m.lat, m.lng]);
+      });
+      footMap.fitBounds(all, { padding: [30, 30], maxZoom: 16 });
+      setTimeout(() => footMap.invalidateSize(), 60);
+    } catch (e) { box.innerHTML = '<div class="meta" style="padding:1rem">地圖載入失敗(可能離線或被網路阻擋)。</div>'; }
+  });
+}
+
+// 「記一筆 / 編輯記錄」表單
+function openMomentSheet(trip, places, moment = null) {
+  const editing = !!moment;
+  let pendingDataUrl = null;                         // 這次新選的照片(存檔時才寫入 assets)
+  let takenAt = moment?.takenAt || Date.now();
+  let coords = (moment && moment.lat != null) ? { lat: moment.lat, lng: moment.lng } : null;
+  let rating = moment?.rating || 0;
+  const sortedPlaces = places.slice().sort((a, b) => a.createdAt - b.createdAt);
+
+  openSheet(`
+    <h2>${editing ? '編輯記錄' : '記一筆'}</h2>
+    <div class="m-photo-pick">
+      <input type="file" accept="image/*" id="m-file" hidden>
+      <button type="button" class="btn ghost" id="m-photobtn" style="--c:#0ea5e9;color:#0ea5e9">${ic('camera')} 加照片 / 拍照</button>
+      <div id="m-preview" class="m-preview"></div>
+    </div>
+    <label class="field"><span class="lab">想說的話 / 心情</span>
+      <textarea id="m-text" rows="3" placeholder="此刻的心情、看到什麼、吃了什麼…">${esc(moment?.text || '')}</textarea></label>
+    <label class="field"><span class="lab">評分</span>
+      <div class="starpick" id="m-stars"></div></label>
+    <div class="row2">
+      <label class="field"><span class="lab">花費(選填)</span>
+        <input id="m-spend" type="number" inputmode="decimal" min="0" value="${moment?.spend ? esc(moment.spend) : ''}"></label>
+      <label class="field"><span class="lab">幣別</span>
+        <input id="m-currency" value="${esc(moment?.currency || (countryCurrency(trip.country) || ''))}" placeholder="如 JPY / NT$"></label>
+    </div>
+    <label class="field"><span class="lab">關聯景點(選填,會標為已造訪)</span>
+      <select id="m-place" class="select">
+        <option value="">不關聯</option>
+        ${sortedPlaces.map((p) => `<option value="${p.id}" ${moment?.placeId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+      </select></label>
+    <button type="button" class="btn ghost" id="m-locate" style="--c:#22b34a;color:#22b34a">${ic('pin')} 打卡:記下我現在的位置</button>
+    <div id="m-locmsg" class="meta" style="min-height:1.1em;margin:.2rem 0 .4rem">${coords ? `已記錄座標 (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})` : ''}</div>
+    <div class="btn-row">
+      <button class="btn primary" id="m-save">${editing ? '儲存' : '記下來'}</button>
+      ${editing ? '<button class="btn danger" id="m-del">刪除這則</button>' : ''}
+      <button class="btn ghost" id="m-cancel">取消</button>
+    </div>
+  `, (sheet, close) => {
+    const preview = sheet.querySelector('#m-preview');
+    const locMsg = sheet.querySelector('#m-locmsg');
+    const placeSel = sheet.querySelector('#m-place');
+    // 既有照片先顯示
+    if (editing && moment.photoId) db.getAsset(moment.photoId).then((u) => { if (u) preview.innerHTML = `<img src="${u}" alt="">`; });
+
+    // 星等
+    const starBox = sheet.querySelector('#m-stars');
+    const drawStars = () => {
+      starBox.innerHTML = [1, 2, 3, 4, 5].map((n) =>
+        `<button type="button" class="star ${n <= rating ? 'on' : ''}" data-n="${n}">★</button>`).join('')
+        + (rating ? `<button type="button" class="star clear" data-n="0">清除</button>` : '');
+      starBox.querySelectorAll('[data-n]').forEach((b) => b.onclick = () => {
+        const n = Number(b.dataset.n); rating = (n === rating) ? 0 : n; drawStars();
+      });
+    };
+    drawStars();
+
+    // 選照片
+    sheet.querySelector('#m-photobtn').onclick = () => sheet.querySelector('#m-file').click();
+    sheet.querySelector('#m-file').onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      preview.innerHTML = '<div class="meta">處理照片中…</div>';
+      try {
+        const { dataUrl, takenAt: t } = await compressImage(file);
+        pendingDataUrl = dataUrl; takenAt = t;
+        preview.innerHTML = `<img src="${dataUrl}" alt="">`;
+      } catch (_) { preview.innerHTML = '<div class="meta" style="color:var(--danger)">照片讀取失敗,換一張試試。</div>'; }
+    };
+
+    // 打卡定位
+    sheet.querySelector('#m-locate').onclick = async () => {
+      locMsg.style.color = 'var(--text-dim)'; locMsg.textContent = '定位中…(請允許使用位置)';
+      try {
+        coords = await getPositionOnce();
+        const near = nearestPlace(places, coords);
+        if (near && near.dist < 0.25 && !placeSel.value) {
+          placeSel.value = near.place.id;
+          locMsg.textContent = `已記錄位置 ✓　最近景點:${near.place.name}(約 ${Math.round(near.dist * 1000)} 公尺,將標為已造訪)`;
+        } else {
+          locMsg.textContent = `已記錄位置 ✓ (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
+        }
+      } catch (e) {
+        locMsg.style.color = 'var(--danger)';
+        locMsg.textContent = e.code === 1 ? '你拒絕了定位權限。到 iOS 設定 → Safari → 位置 開啟。' : '定位失敗,請稍後再試。';
+      }
+    };
+
+    // 儲存
+    sheet.querySelector('#m-save').onclick = async () => {
+      const text = sheet.querySelector('#m-text').value.trim();
+      const spend = parseFloat(sheet.querySelector('#m-spend').value) || 0;
+      const currency = sheet.querySelector('#m-currency').value.trim();
+      const placeId = placeSel.value || null;
+      if (!text && !pendingDataUrl && !coords && !rating && !spend && !(editing && moment.photoId)) {
+        locMsg.style.color = 'var(--danger)'; locMsg.textContent = '至少寫點字、加張照片、打個卡或給個評分吧 🙂'; return;
+      }
+      let photoId = editing ? moment.photoId : null;
+      if (pendingDataUrl) {
+        if (editing && moment.photoId) { /* 換照片:舊的留著沒關係,但盡量清掉 */ }
+        photoId = await db.putAsset(pendingDataUrl);
+      }
+      const patch = {
+        text, rating, spend, currency, placeId,
+        lat: coords ? coords.lat : (editing ? moment.lat : null),
+        lng: coords ? coords.lng : (editing ? moment.lng : null),
+        photoId, hasPhoto: !!photoId, takenAt,
+      };
+      if (editing) await db.updateMoment(moment.id, patch);
+      else await db.createMoment(trip.id, patch);
+      if (placeId) await db.updatePlace(placeId, { status: '已造訪' }); // 關聯景點自動標為已造訪
+      close(); render();
+    };
+
+    const delBtn = sheet.querySelector('#m-del');
+    if (delBtn) delBtn.onclick = async () => {
+      if (!confirm('刪除這則記錄?(照片也會一併刪除)')) return;
+      await db.deleteMoment(moment.id);
+      close(); render();
+    };
+    sheet.querySelector('#m-cancel').onclick = close;
   });
 }
 

@@ -14,8 +14,8 @@
 // ---------------------------------------------------------------------------
 
 const DB_NAME = 'travel-planner';
-const DB_VERSION = 1;
-const STORES = ['trips', 'places', 'moments'];
+const DB_VERSION = 2;
+const STORES = ['trips', 'places', 'moments']; // 會雲端同步的表(assets 不在內,照片只存本機)
 
 // ---- 分類與狀態常數（對應 PRD 二、資料模型）----------------------------------
 export const CATEGORIES = ['景點', '美食', '住宿', '交通', '購物', '其他'];
@@ -47,6 +47,10 @@ function openDB() {
         s.createIndex('placeId', 'placeId', { unique: false });
         s.createIndex('tripId', 'tripId', { unique: false });
       }
+      // 照片/語音等大檔:只存本機(不同步雲端),避免拖慢同步、吃免費額度
+      if (!idb.objectStoreNames.contains('assets')) {
+        idb.createObjectStore('assets', { keyPath: 'id' });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -75,6 +79,10 @@ async function getAll(store) {
 async function getByIndex(store, indexName, value) {
   const idb = await openDB();
   return reqToPromise(idb.transaction(store, 'readonly').objectStore(store).index(indexName).getAll(value));
+}
+async function del(store, id) {
+  const idb = await openDB();
+  await reqToPromise(idb.transaction(store, 'readwrite').objectStore(store).delete(id));
 }
 
 // crypto.randomUUID：全域唯一，本地與雲端共用同一個 id，合併時才對得起來
@@ -208,6 +216,56 @@ async function deletePlace(id) {
   notify();
 }
 
+// ---- Moment(旅途記錄:文字/照片/打卡/評分/花費)-----------------------------
+// 一筆記錄可同時有文字、照片、星等、花費、座標;photoId 指向本機 assets(不同步)。
+async function createMoment(tripId, data = {}) {
+  const now = Date.now();
+  const parent = await get('trips', tripId);
+  const moment = {
+    id: newId(), tripId,
+    placeId: data.placeId || null,     // 關聯的景點(可無)
+    text: (data.text || '').trim(),    // 文字內容
+    rating: Number(data.rating) || 0,  // 0–5 星(0=未評)
+    spend: Number(data.spend) || 0,    // 實際花費(0=無)
+    currency: data.currency || '',     // 幣別(顯示用,可空)
+    lat: data.lat ?? null, lng: data.lng ?? null, // 當下座標(打卡/定位)
+    photoId: data.photoId || null,     // 對應本機 assets 的 id(照片存本機)
+    hasPhoto: !!data.photoId,          // 給別台裝置知道「有照片但在對方手機」
+    takenAt: data.takenAt || now,      // 這則的時間(照片可用檔案時間)
+    public: !!parent?.public,          // 沿用旅程公開狀態
+    fts: {}, createdAt: now, updatedAt: now, deleted: false,
+  };
+  await put('moments', moment); notify(); return moment;
+}
+async function listMoments(tripId) {
+  return active(await getByIndex('moments', 'tripId', tripId)).sort((a, b) => (b.takenAt || 0) - (a.takenAt || 0));
+}
+async function updateMoment(id, patch) {
+  const m = await get('moments', id);
+  if (!m) throw new Error('找不到記錄');
+  const next = withFts({ ...m, ...patch }, Object.keys(patch), Date.now());
+  await put('moments', next); notify(); return next;
+}
+async function deleteMoment(id) {
+  const m = await get('moments', id);
+  if (!m) return;
+  if (m.photoId) await del('assets', m.photoId).catch(() => {}); // 照片是本機大檔,直接清掉騰空間
+  await put('moments', withFts({ ...m, deleted: true, photoId: null, hasPhoto: false }, ['deleted', 'photoId', 'hasPhoto'], Date.now()));
+  notify();
+}
+
+// ---- 本機資產(照片 dataURL 等,不同步雲端)---------------------------------
+async function putAsset(dataUrl) {
+  const id = newId();
+  await put('assets', { id, dataUrl, createdAt: Date.now() });
+  return id;
+}
+async function getAsset(id) {
+  if (!id) return null;
+  const a = await get('assets', id);
+  return a?.dataUrl || null;
+}
+
 // ---- 一次性資料轉換 --------------------------------------------------------
 // 舊資料把分類「餐廳」改名為「美食」。可重複執行(改完就沒有符合的,等於空跑)。
 async function migrateCategories() {
@@ -247,6 +305,8 @@ const sync = {
 export const db = {
   createTrip, listTrips, getTrip, updateTrip, deleteTrip, setTripPublic,
   createPlace, listPlaces, getPlace, updatePlace, deletePlace,
+  createMoment, listMoments, updateMoment, deleteMoment,
+  putAsset, getAsset,
   migrateCategories, claimOwnerlessTrips,
   _sync: sync,
 };
