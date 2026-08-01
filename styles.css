@@ -80,7 +80,13 @@ header .acct {
 }
 header .acct:active { opacity: .75; }
 header .acct.notif { background: #f59e0b; color: #fff; }
-.member-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .4rem 0; color: var(--text); font-weight: 600; }
+.member-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .55rem 0; color: var(--text); font-weight: 600; border-bottom: 1px solid var(--border); }
+.member-row:last-child { border-bottom: none; }
+.member-row .minfo { display: inline-flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.member-row .minfo b { font-size: 1.02rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-row .mstatus { font-size: .82rem; font-weight: 600; color: var(--text-dim); }
+.member-row .mstatus.on { color: #22b34a; }
+.members { margin-bottom: 1rem; }
 
 main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-width: 680px; margin: 0 auto; }
 
