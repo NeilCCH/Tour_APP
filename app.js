@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v47'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v48'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1750,6 +1750,27 @@ function drawCover(ctx, img, W, H, scale) {
   const w = img.width * s, h = img.height * s;
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
+// 把圖縮成很小的一張(之後放大回畫面 = 平滑模糊,不需 canvas 濾鏡,相容 iOS)
+function makeBgSmall(img) {
+  const long = 72;
+  const s = long / Math.max(img.width, img.height);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.width * s));
+  c.height = Math.max(1, Math.round(img.height * s));
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+// 一張投影片:模糊底(cover + Ken Burns)+ 暗化 + 完整照片(contain,不裁切)
+function drawSlide(ctx, img, bgSmall, W, H, kbScale) {
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const bs = Math.max(W / bgSmall.width, H / bgSmall.height) * kbScale;
+  const bw = bgSmall.width * bs, bh = bgSmall.height * bs;
+  ctx.drawImage(bgSmall, (W - bw) / 2, (H - bh) / 2, bw, bh); // 放大模糊底
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 0, W, H); // 暗化,主體更清楚
+  const f = Math.min(W / img.width, H / img.height);           // contain:整張照片,不裁切
+  const fw = img.width * f, fh = img.height * f;
+  ctx.drawImage(img, (W - fw) / 2, (H - fh) / 2, fw, fh);
+}
 function wrapText(ctx, text, cx, cy, maxW, lh) {
   const lines = []; let line = '';
   for (const ch of text) {
@@ -1865,6 +1886,7 @@ async function generateVideoBlob(title, imgs, durationSec, dims, onProgress) {
   const stopped = new Promise((r) => { rec.onstop = r; });
   const titleSec = 2.0;
   const n = imgs.length;
+  const bgs = imgs.map(makeBgSmall); // 預先做好每張的模糊底(縮圖),錄製時直接放大用
   const perPhoto = (durationSec - titleSec) / n;
   const fade = Math.min(0.6, perPhoto * 0.3);
   rec.start();
@@ -1883,10 +1905,11 @@ async function generateVideoBlob(title, imgs, durationSec, dims, onProgress) {
         const tt = t - titleSec;
         let idx = Math.floor(tt / perPhoto); if (idx >= n) idx = n - 1;
         const local = tt - idx * perPhoto;
-        drawCover(ctx, imgs[idx], W, H, 1.05 + 0.12 * (local / perPhoto)); // Ken Burns 緩慢放大
+        // 前景整張不裁切;Ken Burns 運鏡跑在模糊底上
+        drawSlide(ctx, imgs[idx], bgs[idx], W, H, 1.0 + 0.12 * (local / perPhoto));
         if (idx < n - 1 && local > perPhoto - fade) {
           ctx.globalAlpha = (local - (perPhoto - fade)) / fade;
-          drawCover(ctx, imgs[idx + 1], W, H, 1.05);
+          drawSlide(ctx, imgs[idx + 1], bgs[idx + 1], W, H, 1.0);
           ctx.globalAlpha = 1;
         }
       }
