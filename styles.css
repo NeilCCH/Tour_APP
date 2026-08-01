@@ -343,6 +343,41 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .starpick .star.on { color: #f59e0b; border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 12%, var(--card)); }
 .starpick .star.clear { font-size: .95rem; font-weight: 700; color: var(--text-dim); padding: .35rem .7rem; }
 
+/* ---- 回顧(旅遊書)---- */
+.book-cover { text-align: center; padding: 1.6rem 1rem; border-radius: 18px; margin-bottom: 1rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--card)), color-mix(in srgb, #8b5cf6 20%, var(--card))); }
+.book-cover .bc-flag { font-size: 3rem; line-height: 1; }
+.book-cover h2 { font-size: 1.7rem; font-weight: 800; margin: .5rem 0 .3rem; }
+.book-cover .bc-sub { color: var(--text); opacity: .8; font-weight: 600; }
+.book-stats { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.2rem; }
+.book-stats > div { flex: 1; min-width: 3.6rem; text-align: center; background: var(--card);
+  border: 1px solid var(--border); border-radius: 12px; padding: .6rem .3rem; }
+.book-stats b { display: block; font-size: 1.4rem; font-weight: 800; color: var(--accent); }
+.book-stats span { font-size: .78rem; color: var(--text-dim); font-weight: 600; }
+.book-sec-title { font-size: 1.1rem; font-weight: 800; margin: 1.4rem 0 .7rem; }
+.hl-strip { display: flex; gap: .7rem; overflow-x: auto; padding-bottom: .4rem; scroll-snap-type: x mandatory; }
+.hl-card { flex: 0 0 63%; scroll-snap-align: start; border-radius: 14px; overflow: hidden;
+  background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.hl-card img { width: 100%; height: 150px; object-fit: cover; display: block; }
+.hl-card .hl-noimg { height: 150px; display: flex; align-items: center; justify-content: center; font-size: 2.4rem;
+  background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+.hl-card .hl-cap { padding: .5rem .7rem; display: flex; flex-direction: column; gap: .25rem; font-size: .9rem; color: var(--text-dim); }
+.book-day { margin-bottom: 1rem; }
+.bd-head { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .5rem; }
+.bd-head b { font-size: 1.15rem; font-weight: 800; color: var(--accent); }
+.bd-head span { font-size: .9rem; color: var(--text-dim); font-weight: 600; }
+.bd-empty { color: var(--text-dim); font-size: .92rem; padding: .2rem 0 .4rem; }
+.bd-place { display: flex; gap: .7rem; align-items: center; background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: .5rem; margin-bottom: .5rem; }
+.bd-thumb { width: 3.4rem; height: 3.4rem; border-radius: 10px; object-fit: cover; flex: none; }
+.bd-thumb.ph { display: flex; align-items: center; justify-content: center; color: var(--text-dim);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+.bd-info { min-width: 0; }
+.bd-name { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.bd-tags { display: flex; align-items: center; gap: .6rem; margin-top: .25rem; }
+.bd-visited { color: #22b34a; font-size: .82rem; font-weight: 800; }
+#book-map { height: 260px; }
+
 /* ---- 按鈕 ---- */
 .btn {
   width: 100%; padding: .95rem; border-radius: 14px; border: none;

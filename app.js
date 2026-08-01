@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v42'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v43'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -589,11 +589,12 @@ async function renderTrip(trip) {
       <button class="tab ${tripTab === 'list' ? 'on' : ''}" data-tab="list">清單</button>
       <button class="tab ${tripTab === 'plan' ? 'on' : ''}" data-tab="plan">行程</button>
       <button class="tab ${tripTab === 'trip' ? 'on' : ''}" data-tab="trip">旅途</button>
+      <button class="tab ${tripTab === 'book' ? 'on' : ''}" data-tab="book">回顧</button>
     </div>`;
   let body, moments = [];
-  if (tripTab === 'trip') {
+  if (tripTab === 'trip' || tripTab === 'book') {
     moments = await db.listMoments(trip.id);
-    body = momentBody(trip, places, moments);
+    body = tripTab === 'book' ? bookBody(trip, places, moments) : momentBody(trip, places, moments);
   } else if (places.length === 0) {
     body = `
       <div class="empty">
@@ -646,9 +647,12 @@ async function renderTrip(trip) {
   app.querySelector('#suggest')?.addEventListener('click', () => suggestArrange(trip, places, dayCount));
 
   if (tripTab === 'trip') wireMomentTab(trip, places, moments);
+  if (tripTab === 'book') wireBookTab(trip, places, moments);
   if (proximityOn) { proximityPlaces = places; startProximity(trip); } // 任一分頁都可啟動靠近提示
 
-  setFab(() => (tripTab === 'trip' ? openMomentSheet(trip, places) : openPlaceSheet(trip.id)));
+  // 回顧頁不需要「新增」浮動鈕(它是唯讀整理),其餘分頁維持
+  if (tripTab === 'book') setFab(null);
+  else setFab(() => (tripTab === 'trip' ? openMomentSheet(trip, places) : openPlaceSheet(trip.id)));
 }
 
 // 建議安排:把「已定位」的地點依距離分成 dayCount 天,每天就近排序（PRD 4.2）
@@ -1425,18 +1429,45 @@ function momentBody(trip, places, moments) {
   return html;
 }
 
-// 「旅途」分頁的事件:照片載入、卡片點擊編輯、足跡地圖
-function wireMomentTab(trip, places, moments) {
-  // 非同步把本機照片塞進 <img>
+// 非同步把本機照片/語音塞進畫面(照片、語音只存本機,別台裝置顯示「已不在本機」)
+function fillLocalAssets() {
   app.querySelectorAll('img[data-asset]').forEach(async (im) => {
     const url = await db.getAsset(im.dataset.asset).catch(() => null);
     if (url) im.src = url; else im.closest('.m-photo')?.replaceChildren(document.createTextNode('📷 照片已不在本機'));
   });
-  // 非同步把本機語音塞進 <audio>
   app.querySelectorAll('audio[data-audio]').forEach(async (au) => {
     const url = await db.getAsset(au.dataset.audio).catch(() => null);
     if (url) au.src = url; else au.closest('.m-audio')?.replaceChildren(document.createTextNode('🎤 語音已不在本機'));
   });
+}
+// 在指定容器畫出足跡地圖(打卡點 + 已定位景點)
+async function renderFootprintMap(box, moments, places) {
+  const pts = moments.filter((m) => m.lat != null && m.lng != null);
+  const placePts = places.filter((p) => p.lat != null && p.lng != null);
+  if (!pts.length && !placePts.length) { box.innerHTML = '<div class="meta" style="padding:1rem">還沒有任何帶座標的記錄或景點。打卡或替景點定位後,足跡就會出現在這裡。</div>'; return; }
+  try {
+    const L = await loadLeaflet();
+    const map = L.map(box);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+    const all = [];
+    placePts.forEach((p) => {
+      const icon = L.divIcon({ className: 'map-pin', html: '<div class="pin-dot plan"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+      L.marker([p.lat, p.lng], { icon }).addTo(map).bindPopup(esc(p.name));
+      all.push([p.lat, p.lng]);
+    });
+    pts.forEach((m) => {
+      const icon = L.divIcon({ className: 'map-pin', html: '<div class="pin-dot foot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+      L.marker([m.lat, m.lng], { icon }).addTo(map).bindPopup(`${hhmm(m.takenAt)}${m.text ? '・' + esc(m.text.slice(0, 20)) : ''}`);
+      all.push([m.lat, m.lng]);
+    });
+    map.fitBounds(all, { padding: [30, 30], maxZoom: 16 });
+    setTimeout(() => map.invalidateSize(), 60);
+  } catch (e) { box.innerHTML = '<div class="meta" style="padding:1rem">地圖載入失敗(可能離線或被網路阻擋)。</div>'; }
+}
+
+// 「旅途」分頁的事件:照片載入、卡片點擊編輯、足跡地圖
+function wireMomentTab(trip, places, moments) {
+  fillLocalAssets();
   // 靠近提示:更新監看用的景點清單,並依開關啟停
   proximityPlaces = places;
   if (proximityOn) startProximity(trip); else stopProximity();
@@ -1471,36 +1502,92 @@ function wireMomentTab(trip, places, moments) {
     }
     render();
   });
-  // 足跡地圖
-  let footMap = null;
-  app.querySelector('#moment-mapbtn')?.addEventListener('click', async () => {
+  // 足跡地圖(切換顯示,只建立一次)
+  let mapBuilt = false;
+  app.querySelector('#moment-mapbtn')?.addEventListener('click', () => {
     const box = app.querySelector('#moment-map');
     const showing = box.style.display !== 'none';
     if (showing) { box.style.display = 'none'; return; }
     box.style.display = 'block';
-    const pts = moments.filter((m) => m.lat != null && m.lng != null);
-    const placePts = places.filter((p) => p.lat != null && p.lng != null);
-    if (!pts.length && !placePts.length) { box.innerHTML = '<div class="meta" style="padding:1rem">還沒有任何帶座標的記錄或景點。打卡或替景點定位後,足跡就會出現在這裡。</div>'; return; }
-    try {
-      const L = await loadLeaflet();
-      if (footMap) { setTimeout(() => footMap.invalidateSize(), 60); return; }
-      footMap = L.map(box);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(footMap);
-      const all = [];
-      placePts.forEach((p) => {
-        const icon = L.divIcon({ className: 'map-pin', html: '<div class="pin-dot plan"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
-        L.marker([p.lat, p.lng], { icon }).addTo(footMap).bindPopup(esc(p.name));
-        all.push([p.lat, p.lng]);
-      });
-      pts.forEach((m) => {
-        const icon = L.divIcon({ className: 'map-pin', html: '<div class="pin-dot foot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
-        L.marker([m.lat, m.lng], { icon }).addTo(footMap).bindPopup(`${hhmm(m.takenAt)}${m.text ? '・' + esc(m.text.slice(0, 20)) : ''}`);
-        all.push([m.lat, m.lng]);
-      });
-      footMap.fitBounds(all, { padding: [30, 30], maxZoom: 16 });
-      setTimeout(() => footMap.invalidateSize(), 60);
-    } catch (e) { box.innerHTML = '<div class="meta" style="padding:1rem">地圖載入失敗(可能離線或被網路阻擋)。</div>'; }
+    if (!mapBuilt) { mapBuilt = true; renderFootprintMap(box, moments, places); }
   });
+}
+
+// ---- 回顧(旅遊書):把整趟整理成一本可回味的書 -----------------------------
+function bookBody(trip, places, moments) {
+  const dayCount = tripDayCount(trip, places);
+  const visited = places.filter((p) => p.status === '已造訪');
+  const totalSpend = moments.reduce((s, m) => s + (Number(m.spend) || 0), 0);
+  const rated = moments.filter((m) => m.rating);
+  const avgRating = rated.length ? rated.reduce((s, m) => s + m.rating, 0) / rated.length : 0;
+
+  // 每個景點的代表照片與評分(取自關聯到它的旅途記錄)
+  const placePhoto = {}, placeRating = {};
+  moments.forEach((m) => {
+    if (!m.placeId) return;
+    if (m.photoId && !placePhoto[m.placeId]) placePhoto[m.placeId] = m.photoId;
+    if (m.rating) placeRating[m.placeId] = Math.max(placeRating[m.placeId] || 0, m.rating);
+  });
+
+  const flag = trip.country ? flagOf(trip.country) : '';
+  let html = `
+    <div class="book">
+      <div class="book-cover">
+        <div class="bc-flag">${flag || '🧳'}</div>
+        <h2>${esc(trip.name)}</h2>
+        <div class="bc-sub">${esc(fmtDateRange(trip.startDate, trip.endDate))}${trip.country ? ' ・ ' + esc(countryName(trip.country)) : ''}</div>
+      </div>
+      <div class="book-stats">
+        <div><b>${dayCount}</b><span>天</span></div>
+        <div><b>${visited.length}</b><span>造訪地</span></div>
+        <div><b>${moments.length}</b><span>點滴</span></div>
+        <div><b>${totalSpend ? totalSpend.toLocaleString() : 0}</b><span>花費</span></div>
+        ${avgRating ? `<div><b>${avgRating.toFixed(1)}</b><span>平均★</span></div>` : ''}
+      </div>`;
+
+  // 精選時刻:4★以上,或「有照片又有心情文字」的那幾則
+  const highlights = moments.filter((m) => m.rating >= 4 || (m.photoId && m.text)).slice(0, 8);
+  if (highlights.length) {
+    html += `<div class="book-sec-title">✨ 精選時刻</div><div class="hl-strip">`;
+    for (const m of highlights) {
+      const ph = m.photoId ? `<img data-asset="${esc(m.photoId)}" alt="">` : '<div class="hl-noimg">📝</div>';
+      html += `<div class="hl-card">${ph}<div class="hl-cap">${m.rating ? starsView(m.rating) : ''}${m.text ? `<span>${esc(m.text.slice(0, 40))}</span>` : ''}</div></div>`;
+    }
+    html += `</div>`;
+  }
+
+  // 逐日回顧:Day 1..N,列出當天景點(造訪✓ / 評分 / 代表照)
+  html += `<div class="book-sec-title">📖 逐日回顧</div>`;
+  for (let day = 1; day <= dayCount; day++) {
+    const dayPlaces = places.filter((p) => p.assignedDay === day).sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    const dateLabel = trip.startDate ? dayDateLabel(trip.startDate, day) : '';
+    html += `<div class="book-day"><div class="bd-head"><b>Day ${day}</b>${dateLabel ? `<span>${dateLabel}</span>` : ''}</div>`;
+    if (!dayPlaces.length) {
+      html += `<div class="bd-empty">這天沒有安排景點</div>`;
+    } else {
+      for (const p of dayPlaces) {
+        const ph = placePhoto[p.id] ? `<img class="bd-thumb" data-asset="${esc(placePhoto[p.id])}" alt="">` : `<div class="bd-thumb ph">${ic('pin')}</div>`;
+        const visitedTag = p.status === '已造訪' ? '<span class="bd-visited">✓ 已造訪</span>' : '';
+        const rt = placeRating[p.id] ? starsView(placeRating[p.id]) : '';
+        html += `<div class="bd-place">${ph}<div class="bd-info"><div class="bd-name">${esc(p.name)} ${catTag(p.category)}</div>${(visitedTag || rt) ? `<div class="bd-tags">${visitedTag}${rt}</div>` : ''}</div></div>`;
+      }
+    }
+    html += `</div>`;
+  }
+
+  html += `
+    <div class="book-sec-title">🗺️ 足跡地圖</div>
+    <div id="book-map" class="mapbox"></div>
+    <p class="meta" style="text-align:center;margin:.6rem 0 0">照片目前只存在拍攝的裝置。要讓旅伴在回顧裡也看到照片,需開啟雲端相簿(Supabase Storage)。</p>
+    </div>`;
+  return html;
+}
+
+// 回顧頁事件:補上本機照片、畫足跡地圖
+function wireBookTab(trip, places, moments) {
+  fillLocalAssets();
+  const box = app.querySelector('#book-map');
+  if (box) renderFootprintMap(box, moments, places);
 }
 
 // 「記一筆 / 編輯記錄」表單。prefill:靠近提示打卡時預先帶入 {coords, placeId, weather}。
