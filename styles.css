@@ -298,6 +298,21 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .moment-summary .ms-item span { font-size: .82rem; font-weight: 600; color: var(--text-dim); }
 .moment-tools { display: flex; gap: .5rem; margin-bottom: .4rem; }
 .moment-tools .btn { flex: 1; }
+.m-audio-pick { margin-bottom: .95rem; }
+.m-audio-pick audio { width: 100%; margin-top: .5rem; }
+.starpick .star.rec, #m-recbtn.rec { color: #fff !important; background: #ec4899; border-color: #ec4899; }
+.prox-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  font-size: .95rem; font-weight: 700; color: var(--text-dim); margin: .2rem 0 .8rem;
+  background: color-mix(in srgb, var(--accent) 7%, var(--card)); padding: .55rem .85rem; border-radius: 12px; }
+.prox-bar { position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 1rem); transform: translate(-50%, 200%);
+  z-index: 60; display: flex; align-items: center; gap: .5rem; max-width: 92vw;
+  background: #16a34a; color: #fff; padding: .7rem .9rem; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  font-weight: 700; transition: transform .28s ease; }
+.prox-bar.show { transform: translate(-50%, 0); }
+.prox-bar span { display: inline-flex; align-items: center; gap: .3rem; }
+.prox-bar button { width: auto; padding: .4rem .8rem; border-radius: 10px; border: none; font-weight: 800;
+  background: #fff; color: #16a34a; font-size: .95rem; }
+.prox-bar button.skip { background: transparent; color: #eafff0; }
 .m-author { margin-left: auto; font-size: .8rem; font-weight: 700; color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, var(--card)); padding: .12rem .5rem; border-radius: 999px; }
 .timeline { margin-top: .4rem; }
@@ -307,6 +322,9 @@ textarea { resize: vertical; min-height: 4.2rem; }
 .moment-card:active { transform: scale(.99); }
 .moment-card .m-photo img { width: 100%; display: block; max-height: 60vh; object-fit: cover; }
 .moment-card .m-photo.ph { padding: 1.4rem; text-align: center; color: var(--text-dim); background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+.moment-card .m-audio { padding: .1rem 0; }
+.moment-card .m-audio audio { width: 100%; }
+.moment-card .m-audio.ph { color: var(--text-dim); font-size: .9rem; padding: .3rem 0; }
 .moment-card .m-body { padding: .75rem .9rem .85rem; }
 .m-top { display: flex; align-items: center; gap: .6rem; }
 .m-time { font-size: .9rem; font-weight: 800; color: var(--text-dim); }

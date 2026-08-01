@@ -232,6 +232,8 @@ async function createMoment(tripId, data = {}) {
     weather: data.weather || null,     // 打卡當下天氣 { code, temp }(可無)
     photoId: data.photoId || null,     // 對應本機 assets 的 id(照片存本機)
     hasPhoto: !!data.photoId,          // 給別台裝置知道「有照片但在對方手機」
+    audioId: data.audioId || null,     // 語音檔(存本機 assets,不同步)
+    hasAudio: !!data.audioId,          // 給別台裝置知道「有語音但在對方手機」
     authorId: data.authorId || null,   // 誰記的(旅伴動態牆顯示用)
     authorName: data.authorName || '', // 記錄當下的暱稱快照
     takenAt: data.takenAt || now,      // 這則的時間(照片可用檔案時間)
@@ -252,8 +254,10 @@ async function updateMoment(id, patch) {
 async function deleteMoment(id) {
   const m = await get('moments', id);
   if (!m) return;
-  if (m.photoId) await del('assets', m.photoId).catch(() => {}); // 照片是本機大檔,直接清掉騰空間
-  await put('moments', withFts({ ...m, deleted: true, photoId: null, hasPhoto: false }, ['deleted', 'photoId', 'hasPhoto'], Date.now()));
+  if (m.photoId) await del('assets', m.photoId).catch(() => {}); // 照片/語音是本機大檔,直接清掉騰空間
+  if (m.audioId) await del('assets', m.audioId).catch(() => {});
+  await put('moments', withFts({ ...m, deleted: true, photoId: null, hasPhoto: false, audioId: null, hasAudio: false },
+    ['deleted', 'photoId', 'hasPhoto', 'audioId', 'hasAudio'], Date.now()));
   notify();
 }
 

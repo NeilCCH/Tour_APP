@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v41'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v42'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -225,7 +225,7 @@ function timeAgo(ts) {
 async function render() {
   const r = parseRoute();
   // 離開某趟行程時,退出它的即時協作頻道
-  if (joinedTripId && !(r.view === 'trip' && r.tripId === joinedTripId)) leaveTripPresence();
+  if (joinedTripId && !(r.view === 'trip' && r.tripId === joinedTripId)) { leaveTripPresence(); stopProximity(); }
   // 公開分享頁:任何人(含未登入)都能唯讀檢視
   if (r.view === 'share') { await renderSharedTrip(r.tripId); return; }
   // 加入協作:需登入,加入後導向該行程
@@ -646,6 +646,7 @@ async function renderTrip(trip) {
   app.querySelector('#suggest')?.addEventListener('click', () => suggestArrange(trip, places, dayCount));
 
   if (tripTab === 'trip') wireMomentTab(trip, places, moments);
+  if (proximityOn) { proximityPlaces = places; startProximity(trip); } // 任一分頁都可啟動靠近提示
 
   setFab(() => (tripTab === 'trip' ? openMomentSheet(trip, places) : openPlaceSheet(trip.id)));
 }
@@ -1266,6 +1267,15 @@ function compressImage(file, maxDim = 1600, quality = 0.82) {
     img.src = url;
   });
 }
+// Blob → dataURL(語音存本機用)
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
 // 抓一次目前位置(僅前景;iOS 無法背景定位)
 function getPositionOnce() {
   return new Promise((resolve, reject) => {
@@ -1317,6 +1327,42 @@ const dayKey = (ts) => { const d = new Date(ts); return `${d.getFullYear()}/${d.
 const dayLabel = (ts) => { const d = new Date(ts); const wd = ['日','一','二','三','四','五','六'][d.getDay()]; return `${d.getMonth() + 1}月${d.getDate()}日（${wd}）`; };
 const starsView = (n) => `<span class="m-stars">${'★'.repeat(n)}<span class="off">${'★'.repeat(5 - n)}</span></span>`;
 
+// ---- 靠近景點自動提示打卡(僅前景;iOS 無法背景定位)-------------------------
+let proximityOn = localStorage.getItem('proxOn') === '1';
+let geoWatchId = null, proximityPlaces = [], proxTrip = null, lastPromptPlaceId = null;
+function startProximity(trip) {
+  if (!navigator.geolocation || geoWatchId != null) return; // 已在監看就不重複
+  proxTrip = trip;
+  geoWatchId = navigator.geolocation.watchPosition((pos) => {
+    const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    const cands = proximityPlaces.filter((p) => p.lat != null && p.status !== '已造訪');
+    const near = nearestPlace(cands, coords);
+    if (near && near.dist < 0.15 && near.place.id !== lastPromptPlaceId) {
+      lastPromptPlaceId = near.place.id;
+      showProximityBanner(near.place, coords);
+    }
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 });
+}
+function stopProximity() {
+  if (geoWatchId != null) { try { navigator.geolocation.clearWatch(geoWatchId); } catch (_) {} geoWatchId = null; }
+  proxTrip = null; lastPromptPlaceId = null;
+  document.querySelector('.prox-bar')?.remove();
+}
+function showProximityBanner(place, coords) {
+  document.querySelector('.prox-bar')?.remove();
+  const bar = document.createElement('div');
+  bar.className = 'prox-bar';
+  bar.innerHTML = `<span>${ic('pin')} 你在「${esc(place.name)}」附近</span><button class="go">打卡</button><button class="skip">略過</button>`;
+  document.body.appendChild(bar);
+  requestAnimationFrame(() => bar.classList.add('show'));
+  bar.querySelector('.go').onclick = async () => {
+    bar.remove();
+    const weather = await fetchWeather(coords.lat, coords.lng);
+    openMomentSheet(proxTrip, proximityPlaces, null, { coords, placeId: place.id, weather });
+  };
+  bar.querySelector('.skip').onclick = () => bar.remove();
+}
+
 // 「旅途」分頁內容:摘要 + 足跡地圖 + 時間軸
 function momentBody(trip, places, moments) {
   const byId = new Map(places.map((p) => [p.id, p]));
@@ -1333,6 +1379,7 @@ function momentBody(trip, places, moments) {
       <button class="btn ghost" id="moment-batchbtn" style="--c:#0ea5e9;color:#0ea5e9">${ic('camera')} 批次匯入照片</button>
       <input type="file" accept="image/*" multiple id="moment-batchfile" hidden>
     </div>
+    <label class="prox-row">${ic('pin')} 靠近景點自動提示打卡<span class="chip ${proximityOn ? 'on' : ''}" id="prox-toggle">${proximityOn ? '開' : '關'}</span></label>
     <div id="moment-map" class="mapbox" style="display:none;margin:.2rem 0 1rem"></div>`;
 
   if (!moments.length) {
@@ -1353,6 +1400,9 @@ function momentBody(trip, places, moments) {
     const photo = m.photoId
       ? `<div class="m-photo"><img data-asset="${esc(m.photoId)}" alt="旅途照片"></div>`
       : (m.hasPhoto ? '<div class="m-photo ph">📷 照片存在拍攝的裝置上</div>' : '');
+    const audio = m.audioId
+      ? `<div class="m-audio"><audio data-audio="${esc(m.audioId)}" controls preload="none"></audio></div>`
+      : (m.hasAudio ? '<div class="m-audio ph">🎤 語音存在錄製的裝置上</div>' : '');
     const metaBits = [];
     if (place) metaBits.push(`${ic('pin')} ${esc(place.name)}`);
     else if (m.lat != null) metaBits.push(`${ic('pin')} 已定位`);
@@ -1366,6 +1416,7 @@ function momentBody(trip, places, moments) {
         <div class="m-body">
           <div class="m-top"><span class="m-time">${hhmm(m.takenAt)}</span>${m.rating ? starsView(m.rating) : ''}${authorTag}</div>
           ${m.text ? `<div class="m-text">${esc(m.text)}</div>` : ''}
+          ${audio}
           ${metaBits.length ? `<div class="m-meta">${metaBits.map((b) => `<span>${b}</span>`).join('')}</div>` : ''}
         </div>
       </div>`;
@@ -1380,6 +1431,22 @@ function wireMomentTab(trip, places, moments) {
   app.querySelectorAll('img[data-asset]').forEach(async (im) => {
     const url = await db.getAsset(im.dataset.asset).catch(() => null);
     if (url) im.src = url; else im.closest('.m-photo')?.replaceChildren(document.createTextNode('📷 照片已不在本機'));
+  });
+  // 非同步把本機語音塞進 <audio>
+  app.querySelectorAll('audio[data-audio]').forEach(async (au) => {
+    const url = await db.getAsset(au.dataset.audio).catch(() => null);
+    if (url) au.src = url; else au.closest('.m-audio')?.replaceChildren(document.createTextNode('🎤 語音已不在本機'));
+  });
+  // 靠近提示:更新監看用的景點清單,並依開關啟停
+  proximityPlaces = places;
+  if (proximityOn) startProximity(trip); else stopProximity();
+  const proxToggle = app.querySelector('#prox-toggle');
+  proxToggle?.addEventListener('click', () => {
+    proximityOn = !proximityOn;
+    localStorage.setItem('proxOn', proximityOn ? '1' : '0');
+    proxToggle.classList.toggle('on', proximityOn);
+    proxToggle.textContent = proximityOn ? '開' : '關';
+    if (proximityOn) startProximity(trip); else stopProximity();
   });
   // 點卡片 → 編輯該則
   app.querySelectorAll('[data-moment]').forEach((c) => {
@@ -1436,14 +1503,16 @@ function wireMomentTab(trip, places, moments) {
   });
 }
 
-// 「記一筆 / 編輯記錄」表單
-function openMomentSheet(trip, places, moment = null) {
+// 「記一筆 / 編輯記錄」表單。prefill:靠近提示打卡時預先帶入 {coords, placeId, weather}。
+function openMomentSheet(trip, places, moment = null, prefill = null) {
   const editing = !!moment;
   let pendingDataUrl = null;                         // 這次新選的照片(存檔時才寫入 assets)
+  let pendingAudioUrl = null;                        // 這次新錄的語音
   let takenAt = moment?.takenAt || Date.now();
-  let coords = (moment && moment.lat != null) ? { lat: moment.lat, lng: moment.lng } : null;
+  let coords = (moment && moment.lat != null) ? { lat: moment.lat, lng: moment.lng } : (prefill?.coords || null);
   let rating = moment?.rating || 0;
-  let weather = moment?.weather || null;
+  let weather = moment?.weather || prefill?.weather || null;
+  const prePlaceId = moment?.placeId || (!moment && prefill?.placeId) || null;
   const sortedPlaces = places.slice().sort((a, b) => a.createdAt - b.createdAt);
 
   openSheet(`
@@ -1452,6 +1521,10 @@ function openMomentSheet(trip, places, moment = null) {
       <input type="file" accept="image/*" id="m-file" hidden>
       <button type="button" class="btn ghost" id="m-photobtn" style="--c:#0ea5e9;color:#0ea5e9">${ic('camera')} 加照片 / 拍照</button>
       <div id="m-preview" class="m-preview"></div>
+    </div>
+    <div class="m-audio-pick">
+      <button type="button" class="btn ghost" id="m-recbtn" style="--c:#ec4899;color:#ec4899">🎤 錄音</button>
+      <div id="m-audiopreview" class="m-preview"></div>
     </div>
     <label class="field"><span class="lab">想說的話 / 心情</span>
       <textarea id="m-text" rows="3" placeholder="此刻的心情、看到什麼、吃了什麼…">${esc(moment?.text || '')}</textarea></label>
@@ -1466,7 +1539,7 @@ function openMomentSheet(trip, places, moment = null) {
     <label class="field"><span class="lab">關聯景點(選填,會標為已造訪)</span>
       <select id="m-place" class="select">
         <option value="">不關聯</option>
-        ${sortedPlaces.map((p) => `<option value="${p.id}" ${moment?.placeId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+        ${sortedPlaces.map((p) => `<option value="${p.id}" ${prePlaceId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
       </select></label>
     <button type="button" class="btn ghost" id="m-locate" style="--c:#22b34a;color:#22b34a">${ic('pin')} 打卡:記下我現在的位置</button>
     <div id="m-locmsg" class="meta" style="min-height:1.1em;margin:.2rem 0 .4rem">${coords ? `已記錄座標 (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})` : ''}</div>
@@ -1477,10 +1550,36 @@ function openMomentSheet(trip, places, moment = null) {
     </div>
   `, (sheet, close) => {
     const preview = sheet.querySelector('#m-preview');
+    const audioPrev = sheet.querySelector('#m-audiopreview');
     const locMsg = sheet.querySelector('#m-locmsg');
     const placeSel = sheet.querySelector('#m-place');
-    // 既有照片先顯示
+    // 既有照片/語音先顯示
     if (editing && moment.photoId) db.getAsset(moment.photoId).then((u) => { if (u) preview.innerHTML = `<img src="${u}" alt="">`; });
+    if (editing && moment.audioId) db.getAsset(moment.audioId).then((u) => { if (u) audioPrev.innerHTML = `<audio controls src="${u}"></audio>`; });
+
+    // 語音錄音(MediaRecorder;iOS 14.5+ 支援,存本機)
+    const recBtn = sheet.querySelector('#m-recbtn');
+    let mediaRec = null, chunks = [], recording = false;
+    recBtn.onclick = async () => {
+      if (recording) { mediaRec.stop(); return; }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        chunks = [];
+        mediaRec = new MediaRecorder(stream);
+        mediaRec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+        mediaRec.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(chunks, { type: mediaRec.mimeType || 'audio/mp4' });
+          pendingAudioUrl = await blobToDataUrl(blob);
+          audioPrev.innerHTML = `<audio controls src="${pendingAudioUrl}"></audio>`;
+          recBtn.textContent = '🎤 重新錄音'; recBtn.classList.remove('rec'); recording = false;
+        };
+        mediaRec.start();
+        recording = true; recBtn.textContent = '⏹ 停止錄音'; recBtn.classList.add('rec');
+      } catch (_) {
+        audioPrev.innerHTML = '<div class="meta" style="color:var(--danger)">無法錄音,請允許麥克風權限(iOS 設定 → Safari → 麥克風)。</div>';
+      }
+    };
 
     // 星等
     const starBox = sheet.querySelector('#m-stars');
@@ -1533,19 +1632,19 @@ function openMomentSheet(trip, places, moment = null) {
       const spend = parseFloat(sheet.querySelector('#m-spend').value) || 0;
       const currency = sheet.querySelector('#m-currency').value.trim();
       const placeId = placeSel.value || null;
-      if (!text && !pendingDataUrl && !coords && !rating && !spend && !(editing && moment.photoId)) {
-        locMsg.style.color = 'var(--danger)'; locMsg.textContent = '至少寫點字、加張照片、打個卡或給個評分吧 🙂'; return;
+      const hadPhoto = editing && moment.photoId, hadAudio = editing && moment.audioId;
+      if (!text && !pendingDataUrl && !pendingAudioUrl && !coords && !rating && !spend && !hadPhoto && !hadAudio) {
+        locMsg.style.color = 'var(--danger)'; locMsg.textContent = '至少寫點字、加張照片、錄段語音、打個卡或給個評分吧 🙂'; return;
       }
       let photoId = editing ? moment.photoId : null;
-      if (pendingDataUrl) {
-        if (editing && moment.photoId) { /* 換照片:舊的留著沒關係,但盡量清掉 */ }
-        photoId = await db.putAsset(pendingDataUrl);
-      }
+      if (pendingDataUrl) photoId = await db.putAsset(pendingDataUrl);
+      let audioId = editing ? moment.audioId : null;
+      if (pendingAudioUrl) audioId = await db.putAsset(pendingAudioUrl);
       const patch = {
         text, rating, spend, currency, placeId, weather,
         lat: coords ? coords.lat : (editing ? moment.lat : null),
         lng: coords ? coords.lng : (editing ? moment.lng : null),
-        photoId, hasPhoto: !!photoId, takenAt,
+        photoId, hasPhoto: !!photoId, audioId, hasAudio: !!audioId, takenAt,
       };
       if (editing) await db.updateMoment(moment.id, patch);
       else await db.createMoment(trip.id, { ...patch, authorId: currentUser?.id, authorName: displayName() });
