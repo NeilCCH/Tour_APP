@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v48'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v49'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -351,7 +351,9 @@ async function renderJoin(tripId, code) {
 // ---- 首頁：旅程列表 --------------------------------------------------------
 async function renderHome() {
   setHeader('我的旅程', false);
-  const trips = await db.listTrips(currentUser.id);
+  // 依出發日期排序:先出發的在最上面;未設定出發日的排在最後(日期字串 YYYY-MM-DD 可直接比大小)
+  const trips = (await db.listTrips(currentUser.id))
+    .sort((a, b) => (a.startDate || '9999-12-31').localeCompare(b.startDate || '9999-12-31'));
   const greeting = `<div class="greeting"><b>${esc(displayName())}</b>,您好</div>`;
 
   if (trips.length === 0) {
