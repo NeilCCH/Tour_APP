@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v46'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v47'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1775,9 +1775,15 @@ function openVideoMaker(trip, places, moments) {
     ${supported ? '' : '<p class="meta" style="color:var(--danger);margin-bottom:.6rem">這台裝置/瀏覽器不支援在網頁內生成影片。建議改用電腦的瀏覽器開啟本頁製作。</p>'}
     <div class="lab" style="margin:.2rem 0 .4rem">影片長度</div>
     <div class="chips" id="vm-dur">
+      <div class="chip" data-d="30">30 秒</div>
       <div class="chip on" data-d="60">60 秒</div>
       <div class="chip" data-d="90">90 秒</div>
       <div class="chip" data-d="120">120 秒</div>
+    </div>
+    <div class="lab" style="margin:.7rem 0 .4rem">畫面比例</div>
+    <div class="chips" id="vm-fmt">
+      <div class="chip on" data-f="v">直式 9:16（限動 / 短影音）</div>
+      <div class="chip" data-f="h">橫式 16:9（寬螢幕）</div>
     </div>
     <div class="lab" style="margin:.7rem 0 .4rem">選擇照片(預設全選)</div>
     <div class="bm-actions"><button type="button" class="chip" id="vm-all">全選</button><button type="button" class="chip" id="vm-none">全不選</button></div>
@@ -1799,6 +1805,12 @@ function openVideoMaker(trip, places, moments) {
       dur = Number(chip.dataset.d);
       sheet.querySelectorAll('#vm-dur .chip').forEach((c) => c.classList.toggle('on', c === chip));
     };
+    let fmt = 'v'; // v=直式 9:16, h=橫式 16:9
+    sheet.querySelector('#vm-fmt').onclick = (e) => {
+      const chip = e.target.closest('.chip'); if (!chip) return;
+      fmt = chip.dataset.f;
+      sheet.querySelectorAll('#vm-fmt .chip').forEach((c) => c.classList.toggle('on', c === chip));
+    };
     const picks = () => [...sheet.querySelectorAll('.vm-pick')];
     sheet.querySelector('#vm-all').onclick = () => picks().forEach((c) => { c.checked = true; });
     sheet.querySelector('#vm-none').onclick = () => picks().forEach((c) => { c.checked = false; });
@@ -1818,7 +1830,8 @@ function openVideoMaker(trip, places, moments) {
         for (const m of chosen) { const u = await db.getAsset(m.photoId).catch(() => null); if (u) urls.push(u); }
         if (!urls.length) throw new Error('選到的照片都不在本機');
         const imgs = await Promise.all(urls.map(loadImg));
-        const blob = await generateVideoBlob(trip.name, imgs, dur, (p) => { bar.style.width = Math.round(p * 100) + '%'; });
+        const dims = fmt === 'h' ? { W: 1920, H: 1080 } : { W: 1080, H: 1920 };
+        const blob = await generateVideoBlob(trip.name, imgs, dur, dims, (p) => { bar.style.width = Math.round(p * 100) + '%'; });
         const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
         const file = new File([blob], `回顧影片-${trip.name}.${ext}`, { type: blob.type });
         msg.style.color = 'var(--accent)'; msg.textContent = '完成!在跳出的視窗選「儲存影片 / 儲存到檔案」。';
@@ -1838,15 +1851,16 @@ function openVideoMaker(trip, places, moments) {
   });
 }
 
-// 即時把照片畫成投影片並錄成影片(1080×1350,標題卡 + Ken Burns + 淡入淡出)
-async function generateVideoBlob(title, imgs, durationSec, onProgress) {
-  const W = 1080, H = 1350, fps = 30;
+// 即時把照片畫成投影片並錄成影片(dims:直式1080×1920 或 橫式1920×1080,標題卡 + Ken Burns + 淡入淡出)
+async function generateVideoBlob(title, imgs, durationSec, dims, onProgress) {
+  const W = dims.W, H = dims.H, fps = 30;
+  const titleFont = Math.round(Math.min(W, H) * 0.075);
   const mime = pickVideoMime();
   if (!mime) throw new Error('此瀏覽器不支援影片錄製');
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   const stream = canvas.captureStream(fps);
-  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8000000 });
   const chunks = []; rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
   const stopped = new Promise((r) => { rec.onstop = r; });
   const titleSec = 2.0;
@@ -1863,8 +1877,8 @@ async function generateVideoBlob(title, imgs, durationSec, onProgress) {
       if (t < titleSec) {
         ctx.fillStyle = '#0b1f4b'; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.font = '700 66px sans-serif';
-        wrapText(ctx, title, W / 2, H / 2, W - 160, 84);
+        ctx.font = `700 ${titleFont}px sans-serif`;
+        wrapText(ctx, title, W / 2, H / 2, W - titleFont * 2, titleFont * 1.25);
       } else {
         const tt = t - titleSec;
         let idx = Math.floor(tt / perPhoto); if (idx >= n) idx = n - 1;
