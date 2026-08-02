@@ -130,8 +130,8 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
 .dateflow { display: flex; align-items: stretch; margin-bottom: .7rem; font-weight: 800; max-width: 100%; }
 .dateflow .df { display: inline-flex; align-items: center; white-space: nowrap; position: relative; min-width: 0;
   background: var(--c); color: #06403c; line-height: 1.1; letter-spacing: 0;
-  font-size: clamp(.78rem, 3.7vw, 1.32rem);
-  padding: .5rem clamp(.65rem, 2.4vw, 1.3rem) .5rem clamp(.8rem, 2.9vw, 1.5rem); }
+  font-size: clamp(.9rem, 4.5vw, 1.45rem);
+  padding: .58rem clamp(.7rem, 2.8vw, 1.35rem) .58rem clamp(.9rem, 3.3vw, 1.55rem); }
 /* 前兩塊:右側三角形 */
 .dateflow .df.seg-ico,
 .dateflow .df.seg-a { clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 50%, calc(100% - 15px) 100%, 0 100%); }
