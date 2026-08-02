@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v59'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v60'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1221,18 +1221,10 @@ function openPlaceSheet(tripId, place = null) {
         <label class="field"><span class="lab">航班 / 車次</span>
           <input id="f-flightno" placeholder="如 BR182 / のぞみ" value="${esc(place?.flightNo || '')}"></label>
       </div>
-      <div class="row2">
-        <label class="field"><span class="lab">搭乘日期</span>
-          <input id="f-departdate" type="date" value="${datePart(place?.departAt)}"></label>
-        <label class="field"><span class="lab">搭乘時間</span>
-          <input id="f-departtime" type="time" value="${timePart(place?.departAt)}"></label>
-      </div>
-      <div class="row2">
-        <label class="field"><span class="lab">抵達日期(選填)</span>
-          <input id="f-arrivedate" type="date" value="${datePart(place?.arriveAt)}"></label>
-        <label class="field"><span class="lab">抵達時間(選填)</span>
-          <input id="f-arrivetime" type="time" value="${timePart(place?.arriveAt)}"></label>
-      </div>
+      <label class="field"><span class="lab">搭乘日期</span>
+        <input id="f-departdate" type="date" value="${datePart(place?.departAt)}"></label>
+      <label class="field"><span class="lab">搭乘時間</span>
+        <input id="f-departtime" type="time" value="${timePart(place?.departAt)}"></label>
       <div class="row2" style="gap:.5rem;margin-bottom:.6rem">
         <button type="button" class="btn ghost" id="f-flightsearch" style="--c:#0ea5e9;color:#0ea5e9">${ic('plane')} 查航班時刻</button>
         <button type="button" class="btn ghost" id="f-addcal" style="--c:#14b8a6;color:#14b8a6">${ic('calendar')} 加入行事曆</button>
@@ -1359,7 +1351,7 @@ function openPlaceSheet(tripId, place = null) {
         airline: sheet.querySelector('#f-airline').value.trim(),
         flightNo: sheet.querySelector('#f-flightno').value.trim(),
         departAt: joinDT(sheet.querySelector('#f-departdate').value, sheet.querySelector('#f-departtime').value),
-        arriveAt: joinDT(sheet.querySelector('#f-arrivedate').value, sheet.querySelector('#f-arrivetime').value),
+        arriveAt: '',
       };
       if (!datePart(ev.departAt) || !timePart(ev.departAt)) { alert('加入行事曆需要填「搭乘日期」和「搭乘時間」'); return; }
       const ics = buildICS(ev);
@@ -1393,7 +1385,7 @@ function openPlaceSheet(tripId, place = null) {
         airline: sheet.querySelector('#f-airline').value.trim(),
         flightNo: sheet.querySelector('#f-flightno').value.trim(),
         departAt: joinDT(sheet.querySelector('#f-departdate').value, sheet.querySelector('#f-departtime').value),
-        arriveAt: joinDT(sheet.querySelector('#f-arrivedate').value, sheet.querySelector('#f-arrivetime').value),
+        arriveAt: '',
         notes: sheet.querySelector('#f-notes').value.trim(),
         pinned,
         lat: coords?.lat ?? null,
