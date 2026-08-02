@@ -112,6 +112,7 @@ async function createTrip({ name, startDate = '', endDate = '', people = 1, coun
     id: newId(), name: (name || '未命名旅程').trim(),
     startDate, endDate, people: Number(people) || 1,
     country,                        // 主要旅遊國家(ISO 兩碼,如 'KR'):供國旗顯示與定位過濾
+    dayStartTime: {},               // 每天的出發時間 { 天: 'HH:MM' },供行程時間軸推算
     ownerId,                        // 這趟的擁有者(登入者 id);列表依此過濾
     members: [],                    // 協作者的 uid 清單(擁有者不列在內)
     inviteCode: '',                 // 邀請碼(產生邀請連結時才填)
@@ -165,6 +166,9 @@ async function createPlace(tripId, data) {
     estimatedCost: data.estimatedCost ?? 0,
     openingHours: data.openingHours || '',
     referenceUrl: data.referenceUrl || '',
+    // 交通班次資訊(交通類地點用):航空公司/航班號、搭乘與抵達時間(datetime-local 字串)
+    airline: data.airline || '', flightNo: data.flightNo || '',
+    departAt: data.departAt || '', arriveAt: data.arriveAt || '',
     notes: data.notes || '', coverImage: data.coverImage || '',
     status: STATUSES.includes(data.status) ? data.status : '候選',
     pinned: !!data.pinned,

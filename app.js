@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v56'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v57'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -26,6 +26,7 @@ const ICONS = {
   bus: '<rect x="4.5" y="4" width="15" height="12.5" rx="2.5"/><path d="M4.5 11h15M8.5 16.5V19M15.5 16.5V19"/><circle cx="8.5" cy="13.7" r=".7"/><circle cx="15.5" cy="13.7" r=".7"/>',
   metro: '<rect x="5" y="3.5" width="14" height="13" rx="3"/><path d="M5 11h14M9 16.5 7 20M15 16.5 17 20"/><circle cx="9" cy="13.8" r=".8"/><circle cx="15" cy="13.8" r=".8"/>',
   car: '<path d="M4 13 6 8.2A2 2 0 0 1 7.8 7h8.4a2 2 0 0 1 1.8 1.2L20 13"/><rect x="3.5" y="12.5" width="17" height="5" rx="2"/><circle cx="7.5" cy="17.6" r="1.3"/><circle cx="16.5" cy="17.6" r="1.3"/>',
+  plane: '<path d="M21 15.5 13.5 12V6a1.5 1.5 0 0 0-3 0v6L3 15.5v2l7.5-2v3l-2 1.4V22l3-1 3 1v-1.6l-2-1.4v-3l7.5 2z"/>',
   pin: '<path d="M12 21s6.5-6 6.5-10.5a6.5 6.5 0 0 0-13 0C5.5 15 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3.3 2"/>',
   cash: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.6 9.4a2.2 2.2 0 0 1 2.1-1.5h.8a2 2 0 0 1 0 4h-1a2 2 0 0 0 0 4h.8a2.2 2.2 0 0 0 2.1-1.5"/>',
@@ -39,7 +40,7 @@ const ICONS = {
   edit: '<path d="M4 20h4L18.5 9.5a2 2 0 0 0-2.8-2.8L5 17.2V20z"/><path d="M14.5 7.5l2.8 2.8"/>',
   camera: '<path d="M4 8.8A2 2 0 0 1 6 6.8h1.3l.9-1.5a1 1 0 0 1 .9-.5h5.8a1 1 0 0 1 .9.5l.9 1.5H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.6" r="3.1"/>',
 };
-const FILLED = new Set(['pushpin', 'sparkle']);
+const FILLED = new Set(['pushpin', 'sparkle', 'plane']);
 function ic(name) {
   const p = ICONS[name]; if (!p) return '';
   const fill = FILLED.has(name) ? 'currentColor' : 'none';
@@ -65,7 +66,7 @@ function loadLeaflet() {
 }
 
 // ---- 顏色:交通模式、地點分類各給一色(淺色塊)------------------------------
-const MODE_COLORS = { walk: '#22b34a', bus: '#f97316', metro: '#8b5cf6', car: '#3b82f6' };
+const MODE_COLORS = { walk: '#22b34a', bus: '#f97316', metro: '#8b5cf6', car: '#3b82f6', plane: '#0ea5e9' };
 const CATEGORY_COLORS = { 景點: '#22b34a', 美食: '#f97316', 住宿: '#8b5cf6', 交通: '#3b82f6', 購物: '#ec4899', 其他: '#94a3b8' };
 const catTag = (c) => `<span class="tag cat" style="--c:${CATEGORY_COLORS[c] || '#64748b'}">${esc(c)}</span>`;
 
@@ -409,6 +410,13 @@ function dayDateLabel(startDate, day) {
 
 function placeMetaBits(p) {
   const bits = [];
+  // 交通班次:顯示航班/車次與搭乘時間
+  if (p.category === '交通' && (p.flightNo || p.airline || p.departAt)) {
+    const label = `${p.airline || ''} ${p.flightNo || ''}`.trim();
+    if (label) bits.push(`${ic('plane')} ${esc(label)}`);
+    const t = timeOfDatetime(p.departAt);
+    if (t != null) bits.push(`${ic('clock')} 搭乘 ${min2hm(t)}`);
+  }
   if (p.estimatedStay) bits.push(`${ic('clock')} ${fmtTime(p.estimatedStay)}`);
   if (p.estimatedCost) bits.push(`${ic('cash')} ${p.estimatedCost}`);
   return bits;
@@ -502,6 +510,17 @@ function poolCard(p) {
     </div>`;
 }
 
+// ---- 行程時間軸的時間工具 ----
+const hm2min = (hm) => { const m = /(\d{1,2}):(\d{2})/.exec(hm || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+const min2hm = (m) => { m = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+const timeOfDatetime = (dt) => { const m = /T(\d{2}):(\d{2})/.exec(dt || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+// 兩點之間給時間軸用的單一交通估時:有飛機用飛機,否則用駕車;沒定位回 null
+function legMin(a, b) {
+  if (!(hasCoord(a) && hasCoord(b))) return null;
+  const { modes } = legModes(a, b);
+  return (modes.find((m) => m.key === 'plane') || modes.find((m) => m.key === 'car') || modes[0]).minutes;
+}
+
 // 「行程」分頁:上面日期分頁條,下面顯示選中那一天(每天 出發→景點→回程)
 function planBody(trip, places, dayCount) {
   const datesFixed = !!(trip.startDate && trip.endDate);
@@ -544,7 +563,9 @@ function planBody(trip, places, dayCount) {
   const color = dayColor(day);
   const date = datesFixed ? dayDateLabel(trip.startDate, day) : '未設定日期';
   body += `<div class="day-head" style="--dc:${color}">
-    <span class="num">Day ${day}</span><span class="date">${date}</span></div>`;
+    <span class="num">Day ${day}</span><span class="date">${date}</span>
+    <label class="day-start">${ic('clock')} 出發<input type="time" id="day-start-time" value="${esc(trip.dayStartTime?.[day] || '')}"></label>
+  </div>`;
 
   // 第一天不放「出發飯店」,最後一天不放「回程飯店」
   const startP = (day > 1 && trip.dayStart?.[day]) ? byId.get(trip.dayStart[day]) : null;
@@ -557,11 +578,37 @@ function planBody(trip, places, dayCount) {
   sights.forEach((p) => chain.push(['sight', p]));
   if (endP) chain.push(['回程', endP]);
 
+  // 時間軸:有設「出發時間」才推算(起點時間 + 停留 + 交通估時;有訂位班次以其時間為錨)
+  let clock = hm2min(trip.dayStartTime?.[day]);
+  const timed = clock != null;
+
   if (chain.length === 0) {
     body += `<div class="day-empty">這天還沒安排 — 切到「候選」把地點排進來。</div>`;
   } else {
     chain.forEach(([kind, p], idx) => {
-      if (idx > 0) body += legHtml(chain[idx - 1][1], p);
+      if (idx > 0) {
+        body += legHtml(chain[idx - 1][1], p);
+        if (timed) { const lm = legMin(chain[idx - 1][1], p); if (lm != null) clock += lm; }
+      }
+      // 這一站的時間標籤
+      let badge = '';
+      if (timed) {
+        if (idx === 0 && kind === '出發') {
+          badge = `出發 ${min2hm(clock)}`;
+        } else if (kind === 'sight' && p.category === '交通' && p.departAt) {
+          const board = timeOfDatetime(p.departAt), dest = timeOfDatetime(p.arriveAt), atStation = clock;
+          const late = board != null && atStation > board + 1;
+          clock = dest != null ? dest : (board != null ? board + (p.estimatedStay || 0) : clock + (p.estimatedStay || 0));
+          badge = `搭乘 ${board != null ? min2hm(board) : '—'}${dest != null ? ` → 抵達 ${min2hm(dest)}` : ''}`
+            + (late ? ` ⚠ 推算到站 ${min2hm(atStation)},可能趕不上` : '');
+        } else if (kind === 'sight') {
+          const arrive = clock; clock += (p.estimatedStay || 0);
+          badge = `抵 ${min2hm(arrive)} · 離 ${min2hm(clock)}`;
+        } else if (kind === '回程') {
+          badge = `回到 ${min2hm(clock)}`;
+        }
+      }
+      if (badge) body += `<div class="tl-time${/⚠/.test(badge) ? ' warn' : ''}">${ic('clock')} ${badge}</div>`;
       if (kind === 'sight') body += sightCard(p, sights.indexOf(p), sights.length);
       else body += anchorRow(kind, p);
     });
@@ -660,6 +707,12 @@ async function renderTrip(trip) {
   }));
   app.querySelector('#add-day')?.addEventListener('click', async () => {
     await db.updateTrip(trip.id, { dayCount: dayCount + 1 }); planDay = dayCount + 1; render();
+  });
+  // 每日出發時間 → 存進 trip.dayStartTime,重繪時間軸
+  app.querySelector('#day-start-time')?.addEventListener('change', async (e) => {
+    const dst = { ...(trip.dayStartTime || {}) };
+    if (e.target.value) dst[planDay] = e.target.value; else delete dst[planDay];
+    await db.updateTrip(trip.id, { dayStartTime: dst }); render();
   });
   app.querySelector('#suggest')?.addEventListener('click', () => suggestArrange(trip, places, dayCount));
 
@@ -1102,6 +1155,35 @@ function openShareSheet(trip) {
   });
 }
 
+// ---- 行事曆(.ics):把有訂位的交通班次一鍵加入手機行事曆 --------------------
+function icsEscape(s) { return String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n'); }
+function toICSDate(local) { // "2026-08-01T09:30" → "20260801T093000"(浮動本地時間)
+  const m = String(local || '').match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  return m ? `${m[1]}${m[2]}${m[3]}T${m[4]}${m[5]}00` : '';
+}
+function buildICS(ev) {
+  const start = toICSDate(ev.departAt);
+  if (!start) return null;
+  const end = toICSDate(ev.arriveAt) || start;
+  const title = (ev.airline || ev.flightNo) ? `${ev.airline || ''} ${ev.flightNo || ''}`.trim() : (ev.name || '行程');
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '').slice(0, 15) + 'Z';
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Tour//TW//', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+    `UID:${(ev.id || Math.random().toString(36).slice(2))}@tour`, `DTSTAMP:${stamp}`,
+    `DTSTART:${start}`, `DTEND:${end}`, `SUMMARY:${icsEscape(title)}`,
+    ev.name ? `LOCATION:${icsEscape(ev.name)}` : '', 'END:VEVENT', 'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+}
+async function shareOrDownload(blob, filename, title) {
+  const file = new File([blob], filename, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2500);
+}
+
 // ---- 地點表單 --------------------------------------------------------------
 function openPlaceSheet(tripId, place = null) {
   const editing = !!place;
@@ -1126,6 +1208,26 @@ function openPlaceSheet(tripId, place = null) {
       <div class="chips" id="f-cat">
         ${CATEGORIES.map((c) => `<div class="chip ${c === cat ? 'on' : ''}" data-v="${esc(c)}">${esc(c)}</div>`).join('')}
       </div></label>
+
+    <div id="f-transport" style="${cat === '交通' ? '' : 'display:none'}">
+      <div class="section-title" style="margin:.2rem 0 .5rem">交通班次(選填)</div>
+      <div class="row2">
+        <label class="field"><span class="lab">航空公司</span>
+          <input id="f-airline" placeholder="如 長榮 / JR" value="${esc(place?.airline || '')}"></label>
+        <label class="field"><span class="lab">航班 / 車次</span>
+          <input id="f-flightno" placeholder="如 BR182 / のぞみ" value="${esc(place?.flightNo || '')}"></label>
+      </div>
+      <div class="row2">
+        <label class="field"><span class="lab">搭乘 / 出發時間</span>
+          <input id="f-departat" type="datetime-local" value="${esc(place?.departAt || '')}"></label>
+        <label class="field"><span class="lab">抵達時間(選填)</span>
+          <input id="f-arriveat" type="datetime-local" value="${esc(place?.arriveAt || '')}"></label>
+      </div>
+      <div class="row2" style="gap:.5rem;margin-bottom:.6rem">
+        <button type="button" class="btn ghost" id="f-flightsearch" style="--c:#0ea5e9;color:#0ea5e9">${ic('plane')} 查航班時刻</button>
+        <button type="button" class="btn ghost" id="f-addcal" style="--c:#14b8a6;color:#14b8a6">${ic('calendar')} 加入行事曆</button>
+      </div>
+    </div>
 
     <label class="field"><span class="lab">狀態</span>
       <div class="chips" id="f-status">
@@ -1171,8 +1273,12 @@ function openPlaceSheet(tripId, place = null) {
         const chip = e.target.closest('.chip'); if (!chip) return;
         box.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
         chip.classList.add('on');
-        // 切換分類時，若停留欄空白，更新 placeholder 為該分類預設值
-        if (id === '#f-cat') sheet.querySelector('#f-stay').placeholder = DEFAULT_STAY[chip.dataset.v] ?? 60;
+        // 切換分類時，若停留欄空白，更新 placeholder 為該分類預設值;交通類才顯示班次區
+        if (id === '#f-cat') {
+          sheet.querySelector('#f-stay').placeholder = DEFAULT_STAY[chip.dataset.v] ?? 60;
+          const tb = sheet.querySelector('#f-transport');
+          if (tb) tb.style.display = chip.dataset.v === '交通' ? '' : 'none';
+        }
       });
     };
     bindSingle('#f-cat'); bindSingle('#f-status');
@@ -1230,6 +1336,27 @@ function openPlaceSheet(tripId, place = null) {
       } catch (e) { locEl.textContent = '地圖載入失敗(可能離線或被網路阻擋)'; }
     };
 
+    // 交通班次:查航班時刻(開新分頁查)/ 加入手機行事曆(.ics)
+    sheet.querySelector('#f-flightsearch').onclick = () => {
+      const q = (sheet.querySelector('#f-airline').value + ' ' + sheet.querySelector('#f-flightno').value).trim()
+        || sheet.querySelector('#f-name').value.trim();
+      if (!q) { alert('請先填航空公司/航班號或地點名稱'); return; }
+      window.open('https://www.google.com/search?q=' + encodeURIComponent(q + ' 航班時刻 flight status'), '_blank');
+    };
+    sheet.querySelector('#f-addcal').onclick = async () => {
+      const ev = {
+        id: place?.id, name: sheet.querySelector('#f-name').value.trim(),
+        airline: sheet.querySelector('#f-airline').value.trim(),
+        flightNo: sheet.querySelector('#f-flightno').value.trim(),
+        departAt: sheet.querySelector('#f-departat').value,
+        arriveAt: sheet.querySelector('#f-arriveat').value,
+      };
+      if (!ev.departAt) { alert('請先填「搭乘 / 出發時間」'); return; }
+      const ics = buildICS(ev);
+      if (!ics) { alert('時間格式有誤'); return; }
+      await shareOrDownload(new Blob([ics], { type: 'text/calendar' }), `${ev.flightNo || ev.name || 'event'}.ics`, ev.name || '行程');
+    };
+
     // 釘選開關
     const pinChip = sheet.querySelector('#f-pin');
     let pinned = !!place?.pinned;
@@ -1253,6 +1380,10 @@ function openPlaceSheet(tripId, place = null) {
         estimatedCost: Number(sheet.querySelector('#f-cost').value) || 0,
         openingHours: sheet.querySelector('#f-hours').value.trim(),
         referenceUrl: sheet.querySelector('#f-url').value.trim(),
+        airline: sheet.querySelector('#f-airline').value.trim(),
+        flightNo: sheet.querySelector('#f-flightno').value.trim(),
+        departAt: sheet.querySelector('#f-departat').value,
+        arriveAt: sheet.querySelector('#f-arriveat').value,
         notes: sheet.querySelector('#f-notes').value.trim(),
         pinned,
         lat: coords?.lat ?? null,

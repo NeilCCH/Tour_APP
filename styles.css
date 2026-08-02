@@ -221,6 +221,14 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
   display: flex; align-items: baseline; gap: .8rem; box-shadow: var(--shadow); }
 .day-head .num { font-size: 1.7rem; font-weight: 800; letter-spacing: .02em; color: var(--dc); }
 .day-head .date { font-size: 1.02rem; font-weight: 600; color: var(--text-dim); }
+.day-head .day-start { margin-left: auto; display: inline-flex; align-items: center; gap: .3rem;
+  font-size: .9rem; font-weight: 700; color: var(--dc); white-space: nowrap; }
+.day-head .day-start input { width: auto; padding: .3rem .5rem; border-radius: 9px; font-size: .95rem;
+  border: 1.5px solid color-mix(in srgb, var(--dc) 40%, var(--border)); background: var(--card); color: var(--text); }
+/* 時間軸:每站的推算時間 */
+.tl-time { font-size: .92rem; font-weight: 700; color: var(--accent); margin: .1rem .2rem .5rem;
+  display: inline-flex; align-items: center; gap: .3rem; }
+.tl-time.warn { color: var(--danger); }
 
 /* ---- 行程卡片(含上下移)---- */
 .card.itin { display: flex; align-items: center; gap: .7rem; }

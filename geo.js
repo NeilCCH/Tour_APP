@@ -28,10 +28,15 @@ export function legModes(a, b) {
   const roadKm = straight * 1.25;
   const mk = (key, label, kmh, km) => ({ key, label, minutes: Math.max(1, Math.round((km / kmh) * 60)) });
   const modes = [];
+  const longHaul = straight > 250; // 長距離:改列駕車 + 飛機,不列市區巴士/捷運
   if (roadKm < 8) modes.push(mk('walk', '步行', 4.5, roadKm)); // 太遠就不列步行
-  modes.push(mk('bus', '巴士', 14, roadKm));
-  modes.push(mk('metro', '捷運', 32, straight * 1.15));
+  if (!longHaul) {
+    modes.push(mk('bus', '巴士', 14, roadKm));
+    modes.push(mk('metro', '捷運', 32, straight * 1.15));
+  }
   modes.push(mk('car', '駕車', 24, roadKm));
+  // 飛機:含報到/滑行/等待約 100 分鐘的固定折算 + 巡航(約 750 km/h)
+  if (longHaul) modes.push({ key: 'plane', label: '飛機', minutes: Math.round(100 + (straight / 750) * 60) });
   return { km: roadKm, modes };
 }
 
