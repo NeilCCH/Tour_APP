@@ -290,7 +290,11 @@ input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex: none; padding: 0
 textarea { resize: vertical; min-height: 4.2rem; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
 .row2 > .field { min-width: 0; }
-input[type="date"], input[type="time"], input[type="datetime-local"] { display: block; width: 100%; min-width: 0; max-width: 100%; }
+/* iOS 的 date/time 有內建固定寬度,不完全遵守 width;用 appearance:none 讓它變回一般方框(仍可點開原生選擇器) */
+input[type="date"], input[type="time"], input[type="datetime-local"] {
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+input[type="date"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 
 .chips { display: flex; flex-wrap: wrap; gap: .55rem; }
 .chip {
