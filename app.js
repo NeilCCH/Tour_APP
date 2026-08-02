@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v55'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v56'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -105,11 +105,11 @@ function fmtDateRange(a, b) {
 }
 // 日期區:三個「右側三角形」色塊(同色系深→淺)—— 日曆 / 出發日 / 回程日,取代箭頭
 function dateFlowHtml(a, b) {
-  const ico = `<span class="df seg-ico" style="--c:#c2660a">${ic('calendar')}</span>`;
-  if (!a && !b) return `<div class="dateflow">${ico}<span class="df seg-b" style="--c:#fcd34d">尚未設定日期</span></div>`;
+  const ico = `<span class="df seg-ico" style="--c:#0d7d76">${ic('calendar')}</span>`;
+  if (!a && !b) return `<div class="dateflow">${ico}<span class="df seg-b" style="--c:#81d8d0">尚未設定日期</span></div>`;
   const start = a || b, end = (a && b) ? b : '';
-  let s = `<div class="dateflow">${ico}<span class="df seg-a" style="--c:#f59e0b">${esc(start)}</span>`;
-  if (end) s += `<span class="df seg-b" style="--c:#fcd34d">${esc(end)}</span>`;
+  let s = `<div class="dateflow">${ico}<span class="df seg-a" style="--c:#14b8a6">${esc(start)}</span>`;
+  if (end) s += `<span class="df seg-b" style="--c:#81d8d0">${esc(end)}</span>`;
   return s + `</div>`;
 }
 
