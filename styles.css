@@ -287,6 +287,8 @@ input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex: none; padding: 0
   box-shadow: none; accent-color: var(--accent); }
 textarea { resize: vertical; min-height: 4.2rem; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
+.row2 > .field { min-width: 0; }
+input[type="date"], input[type="time"], input[type="datetime-local"] { min-width: 0; max-width: 100%; }
 
 .chips { display: flex; flex-wrap: wrap; gap: .55rem; }
 .chip {

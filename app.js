@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v58'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v59'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1156,6 +1156,10 @@ function openShareSheet(trip) {
 }
 
 // ---- 行事曆(.ics):把有訂位的交通班次一鍵加入手機行事曆 --------------------
+// 日期/時間各自用一個窄輸入(datetime-local 在 iOS 會撐寬版面),存回時再合併
+const datePart = (s) => (/(\d{4}-\d{2}-\d{2})/.exec(s || '') || [])[1] || '';
+const timePart = (s) => (/(\d{2}:\d{2})/.exec(s || '') || [])[1] || '';
+const joinDT = (d, t) => (d && t) ? `${d}T${t}` : (t ? `T${t}` : '');
 function icsEscape(s) { return String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n'); }
 function toICSDate(local) { // "2026-08-01T09:30" → "20260801T093000"(浮動本地時間)
   const m = String(local || '').match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
@@ -1217,10 +1221,18 @@ function openPlaceSheet(tripId, place = null) {
         <label class="field"><span class="lab">航班 / 車次</span>
           <input id="f-flightno" placeholder="如 BR182 / のぞみ" value="${esc(place?.flightNo || '')}"></label>
       </div>
-      <label class="field"><span class="lab">搭乘 / 出發時間</span>
-        <input id="f-departat" type="datetime-local" value="${esc(place?.departAt || '')}"></label>
-      <label class="field"><span class="lab">抵達時間(選填)</span>
-        <input id="f-arriveat" type="datetime-local" value="${esc(place?.arriveAt || '')}"></label>
+      <div class="row2">
+        <label class="field"><span class="lab">搭乘日期</span>
+          <input id="f-departdate" type="date" value="${datePart(place?.departAt)}"></label>
+        <label class="field"><span class="lab">搭乘時間</span>
+          <input id="f-departtime" type="time" value="${timePart(place?.departAt)}"></label>
+      </div>
+      <div class="row2">
+        <label class="field"><span class="lab">抵達日期(選填)</span>
+          <input id="f-arrivedate" type="date" value="${datePart(place?.arriveAt)}"></label>
+        <label class="field"><span class="lab">抵達時間(選填)</span>
+          <input id="f-arrivetime" type="time" value="${timePart(place?.arriveAt)}"></label>
+      </div>
       <div class="row2" style="gap:.5rem;margin-bottom:.6rem">
         <button type="button" class="btn ghost" id="f-flightsearch" style="--c:#0ea5e9;color:#0ea5e9">${ic('plane')} 查航班時刻</button>
         <button type="button" class="btn ghost" id="f-addcal" style="--c:#14b8a6;color:#14b8a6">${ic('calendar')} 加入行事曆</button>
@@ -1346,10 +1358,10 @@ function openPlaceSheet(tripId, place = null) {
         id: place?.id, name: sheet.querySelector('#f-name').value.trim(),
         airline: sheet.querySelector('#f-airline').value.trim(),
         flightNo: sheet.querySelector('#f-flightno').value.trim(),
-        departAt: sheet.querySelector('#f-departat').value,
-        arriveAt: sheet.querySelector('#f-arriveat').value,
+        departAt: joinDT(sheet.querySelector('#f-departdate').value, sheet.querySelector('#f-departtime').value),
+        arriveAt: joinDT(sheet.querySelector('#f-arrivedate').value, sheet.querySelector('#f-arrivetime').value),
       };
-      if (!ev.departAt) { alert('請先填「搭乘 / 出發時間」'); return; }
+      if (!datePart(ev.departAt) || !timePart(ev.departAt)) { alert('加入行事曆需要填「搭乘日期」和「搭乘時間」'); return; }
       const ics = buildICS(ev);
       if (!ics) { alert('時間格式有誤'); return; }
       await shareOrDownload(new Blob([ics], { type: 'text/calendar' }), `${ev.flightNo || ev.name || 'event'}.ics`, ev.name || '行程');
@@ -1380,8 +1392,8 @@ function openPlaceSheet(tripId, place = null) {
         referenceUrl: sheet.querySelector('#f-url').value.trim(),
         airline: sheet.querySelector('#f-airline').value.trim(),
         flightNo: sheet.querySelector('#f-flightno').value.trim(),
-        departAt: sheet.querySelector('#f-departat').value,
-        arriveAt: sheet.querySelector('#f-arriveat').value,
+        departAt: joinDT(sheet.querySelector('#f-departdate').value, sheet.querySelector('#f-departtime').value),
+        arriveAt: joinDT(sheet.querySelector('#f-arrivedate').value, sheet.querySelector('#f-arrivetime').value),
         notes: sheet.querySelector('#f-notes').value.trim(),
         pinned,
         lat: coords?.lat ?? null,
