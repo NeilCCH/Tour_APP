@@ -189,6 +189,8 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
 /* ---- 時間單位切換(分/時)---- */
 .unit-row { display: flex; align-items: center; justify-content: flex-end; gap: .5rem;
   font-size: .9rem; font-weight: 600; color: var(--text-dim); margin-bottom: .7rem; }
+.plan-top { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-bottom: .7rem; }
+.unit-inline { display: inline-flex; align-items: center; gap: .5rem; font-size: .9rem; font-weight: 600; color: var(--text-dim); }
 .seg { display: inline-flex; background: color-mix(in srgb, var(--text-dim) 12%, transparent);
   border-radius: 999px; padding: .2rem; }
 .seg-btn { border: none; background: transparent; color: var(--text-dim); font-family: inherit;

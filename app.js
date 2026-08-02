@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v51'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v52'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -405,10 +405,13 @@ function placeMetaBits(p) {
 }
 
 // 「清單」分頁:依狀態分組（原本的樣子）
-function listBody(places) {
+function listBody(places, trip) {
+  const anchors = anchorIdSet(trip);
+  // 已被設為某天出發/回程的住宿,視為「已排入行程」,不再列在「候選」
+  const effStatus = (p) => (anchors.has(p.id) && p.status === '候選') ? '已排入' : p.status;
   let body = '';
   for (const status of STATUSES) {
-    const group = places.filter((p) => p.status === status);
+    const group = places.filter((p) => effStatus(p) === status);
     if (group.length === 0) continue;
     body += `<div class="section-title"><span class="dot st-${esc(status)}"></span> ${esc(status)}（${group.length}）</div>`;
     body += group.map((p) => {
@@ -498,18 +501,20 @@ function planBody(trip, places, dayCount) {
 
   let body = `<button class="btn primary" id="suggest" style="margin-bottom:12px">${ic('sparkle')} 建議安排</button>`;
 
-  // 時間單位切換（分 / 時）
-  body += `<div class="unit-row">時間顯示
-    <span class="seg">
-      <button class="seg-btn ${timeUnit === 'min' ? 'on' : ''}" data-unit="min">分</button>
-      <button class="seg-btn ${timeUnit === 'hr' ? 'on' : ''}" data-unit="hr">時</button>
-    </span></div>`;
-
-  // 日期分頁條
   const pool = places.filter((p) => !p.assignedDay && !anchors.has(p.id)).sort((a, b) => a.createdAt - b.createdAt);
+
+  // 「候選」放到 Day 之上,與「時間顯示」同一行
+  body += `<div class="plan-top">
+    <button class="day-pill ${planDay === 'pool' ? 'on' : ''}" data-day="pool" ${planDay === 'pool' ? 'style="background:#64748b"' : ''}>候選 ${pool.length}</button>
+    <span class="unit-inline">時間顯示
+      <span class="seg">
+        <button class="seg-btn ${timeUnit === 'min' ? 'on' : ''}" data-unit="min">分</button>
+        <button class="seg-btn ${timeUnit === 'hr' ? 'on' : ''}" data-unit="hr">時</button>
+      </span></span>
+  </div>`;
+
+  // 日期分頁條(只有各天)
   body += `<div class="day-strip">`;
-  // 候選放最前面
-  body += `<button class="day-pill ${planDay === 'pool' ? 'on' : ''}" data-day="pool" ${planDay === 'pool' ? 'style="background:#64748b"' : ''}>候選 ${pool.length}</button>`;
   for (let d = 1; d <= dayCount; d++) {
     const on = planDay === d;
     body += `<button class="day-pill ${on ? 'on' : ''}" data-day="${d}" ${on ? `style="background:${dayColor(d)}"` : ''}>Day ${d}</button>`;
@@ -604,7 +609,7 @@ async function renderTrip(trip) {
         <p>這趟旅程還沒有地點。<br>點右下角的 <b>＋</b> 手動新增第一個地點。</p>
       </div>`;
   } else {
-    body = tripTab === 'plan' ? planBody(trip, places, dayCount) : listBody(places);
+    body = tripTab === 'plan' ? planBody(trip, places, dayCount) : listBody(places, trip);
   }
   app.innerHTML = head + tabs + body;
 
