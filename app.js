@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v52'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v53'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -29,7 +29,8 @@ const ICONS = {
   pin: '<path d="M12 21s6.5-6 6.5-10.5a6.5 6.5 0 0 0-13 0C5.5 15 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3.3 2"/>',
   cash: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.6 9.4a2.2 2.2 0 0 1 2.1-1.5h.8a2 2 0 0 1 0 4h-1a2 2 0 0 0 0 4h.8a2.2 2.2 0 0 0 2.1-1.5"/>',
-  calendar: '<rect x="4" y="5.5" width="16" height="14" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="3.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><rect x="6.8" y="12.3" width="4" height="4" rx="1.2"/>',
+  chevrons: '<path d="M5 6.5l5 5.5-5 5.5M11 6.5l5 5.5-5 5.5M17 6.5l5 5.5-5 5.5"/>',
   hotel: '<path d="M3.5 7v12M3.5 13.5h17V19M20.5 19v-4a2.5 2.5 0 0 0-2.5-2.5H9.5V15"/><circle cx="7" cy="11" r="1.6"/>',
   suitcase: '<rect x="4" y="7.5" width="16" height="12.5" rx="2.5"/><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M4 13.5h16"/>',
   link: '<path d="M10 13a4 4 0 0 0 5.5.3l2-2a4 4 0 0 0-5.6-5.6l-1 .9"/><path d="M14 11a4 4 0 0 0-5.5-.3l-2 2a4 4 0 0 0 5.6 5.6l1-.9"/>',
@@ -99,8 +100,14 @@ function flagOf(code) {
 
 function fmtDateRange(a, b) {
   if (!a && !b) return '尚未設定日期';
-  if (a && b) return `${a} → ${b}`;
+  if (a && b) return `${a} – ${b}`;
   return a || b;
+}
+// 日期區間的 HTML 版:兩個日期之間用雪弗龍箭號(色條)取代「→」,給行程頁色塊用
+function dateRangeHtml(a, b) {
+  if (!a && !b) return '尚未設定日期';
+  if (a && b) return `${esc(a)}<span class="date-sep">${ic('chevrons')}</span>${esc(b)}`;
+  return esc(a || b);
 }
 
 function stayText(min) {
@@ -281,7 +288,7 @@ function sharedView(trip, places) {
   let html = `
     <div class="trip-hero">
       <div style="font-size:1.4rem;font-weight:800;margin-bottom:.5rem">${esc(trip.name)}</div>
-      <div class="dates" style="--c:#f59e0b">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
+      <div class="dates" style="--c:#f59e0b">${ic('calendar')} ${dateRangeHtml(trip.startDate, trip.endDate)}</div>
       <div class="stats">
         <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
         <div class="stat" style="--c:#14b8a6"><div class="v">${trip.people || 1}</div><div class="l">人</div></div>
@@ -578,7 +585,7 @@ async function renderTrip(trip) {
 
   const head = presenceBar + `
     <div class="trip-hero">
-      <div class="dates" style="--c:#f59e0b">${ic('calendar')} ${esc(fmtDateRange(trip.startDate, trip.endDate))}</div>
+      <div class="dates" style="--c:#f59e0b">${ic('calendar')} ${dateRangeHtml(trip.startDate, trip.endDate)}</div>
       <div class="owner-line">發起人:${esc(nameFor(trip.ownerId))}${trip.ownerId === currentUser.id ? '（你）' : '　・你是協作者'}</div>
       <div class="stats">
         <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
