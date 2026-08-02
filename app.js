@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v57'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v58'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1217,12 +1217,10 @@ function openPlaceSheet(tripId, place = null) {
         <label class="field"><span class="lab">航班 / 車次</span>
           <input id="f-flightno" placeholder="如 BR182 / のぞみ" value="${esc(place?.flightNo || '')}"></label>
       </div>
-      <div class="row2">
-        <label class="field"><span class="lab">搭乘 / 出發時間</span>
-          <input id="f-departat" type="datetime-local" value="${esc(place?.departAt || '')}"></label>
-        <label class="field"><span class="lab">抵達時間(選填)</span>
-          <input id="f-arriveat" type="datetime-local" value="${esc(place?.arriveAt || '')}"></label>
-      </div>
+      <label class="field"><span class="lab">搭乘 / 出發時間</span>
+        <input id="f-departat" type="datetime-local" value="${esc(place?.departAt || '')}"></label>
+      <label class="field"><span class="lab">抵達時間(選填)</span>
+        <input id="f-arriveat" type="datetime-local" value="${esc(place?.arriveAt || '')}"></label>
       <div class="row2" style="gap:.5rem;margin-bottom:.6rem">
         <button type="button" class="btn ghost" id="f-flightsearch" style="--c:#0ea5e9;color:#0ea5e9">${ic('plane')} 查航班時刻</button>
         <button type="button" class="btn ghost" id="f-addcal" style="--c:#14b8a6;color:#14b8a6">${ic('calendar')} 加入行事曆</button>
