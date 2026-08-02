@@ -125,21 +125,22 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 1.15rem; margin-bottom: 1rem;
 }
-/* 日期區:三個色塊(同色系深→淺),中間交錯重疊,最右塊圓角收尾 */
-.dateflow { display: flex; align-items: stretch; margin-bottom: .7rem; font-weight: 800; }
-.dateflow .df { display: inline-flex; align-items: center; white-space: nowrap; position: relative;
-  background: var(--c); color: #06403c; line-height: 1.1; letter-spacing: .01em;
-  font-size: clamp(1rem, 4.2vw, 1.45rem);
-  padding: .5rem 1.4rem .5rem 1.6rem; }
+/* 日期區:三個色塊(同色系深→淺),中間交錯重疊,最右塊圓角收尾。
+   字級/內距用 vw 隨螢幕縮放(下限刻意壓低),確保窄機型也塞得下、不外撐。 */
+.dateflow { display: flex; align-items: stretch; margin-bottom: .7rem; font-weight: 800; max-width: 100%; }
+.dateflow .df { display: inline-flex; align-items: center; white-space: nowrap; position: relative; min-width: 0;
+  background: var(--c); color: #06403c; line-height: 1.1; letter-spacing: 0;
+  font-size: clamp(.78rem, 3.7vw, 1.32rem);
+  padding: .5rem clamp(.65rem, 2.4vw, 1.3rem) .5rem clamp(.8rem, 2.9vw, 1.5rem); }
 /* 前兩塊:右側三角形 */
 .dateflow .df.seg-ico,
-.dateflow .df.seg-a { clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%); }
-.dateflow .df.seg-ico { color: #fff; z-index: 3; padding-left: 1rem; padding-right: 1.5rem;
+.dateflow .df.seg-a { clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 50%, calc(100% - 15px) 100%, 0 100%); }
+.dateflow .df.seg-ico { color: #fff; z-index: 3; padding-left: clamp(.7rem, 2.4vw, 1rem); padding-right: clamp(.9rem, 3vw, 1.4rem);
   border-radius: 10px 0 0 10px; }
-.dateflow .df.seg-ico .ic svg { width: 1.4em; height: 1.4em; }
-.dateflow .df.seg-a { z-index: 2; margin-left: -16px; }        /* 重疊上一塊的尖角 */
+.dateflow .df.seg-ico .ic svg { width: 1.3em; height: 1.3em; }
+.dateflow .df.seg-a { z-index: 2; margin-left: -15px; }        /* 重疊上一塊的尖角 */
 /* 最右塊:不要箭頭,圓角收尾 */
-.dateflow .df.seg-b { z-index: 1; margin-left: -16px; border-radius: 0 12px 12px 0; }
+.dateflow .df.seg-b { z-index: 1; margin-left: -15px; border-radius: 0 12px 12px 0; }
 .trip-hero .stats { display: flex; gap: .6rem; }
 .stat { flex: 1; background: color-mix(in srgb, var(--c, var(--accent)) 11%, var(--card));
   border-radius: 14px; padding: .8rem .5rem; text-align: center; }
