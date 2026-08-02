@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v53'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v54'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -103,11 +103,14 @@ function fmtDateRange(a, b) {
   if (a && b) return `${a} – ${b}`;
   return a || b;
 }
-// 日期區間的 HTML 版:兩個日期之間用雪弗龍箭號(色條)取代「→」,給行程頁色塊用
-function dateRangeHtml(a, b) {
-  if (!a && !b) return '尚未設定日期';
-  if (a && b) return `${esc(a)}<span class="date-sep">${ic('chevrons')}</span>${esc(b)}`;
-  return esc(a || b);
+// 日期區:三個「右側三角形」色塊(同色系深→淺)—— 日曆 / 出發日 / 回程日,取代箭頭
+function dateFlowHtml(a, b) {
+  const ico = `<span class="df seg-ico" style="--c:#c2660a">${ic('calendar')}</span>`;
+  if (!a && !b) return `<div class="dateflow">${ico}<span class="df seg-b" style="--c:#fcd34d">尚未設定日期</span></div>`;
+  const start = a || b, end = (a && b) ? b : '';
+  let s = `<div class="dateflow">${ico}<span class="df seg-a" style="--c:#f59e0b">${esc(start)}</span>`;
+  if (end) s += `<span class="df seg-b" style="--c:#fcd34d">${esc(end)}</span>`;
+  return s + `</div>`;
 }
 
 function stayText(min) {
@@ -288,7 +291,7 @@ function sharedView(trip, places) {
   let html = `
     <div class="trip-hero">
       <div style="font-size:1.4rem;font-weight:800;margin-bottom:.5rem">${esc(trip.name)}</div>
-      <div class="dates" style="--c:#f59e0b">${ic('calendar')} ${dateRangeHtml(trip.startDate, trip.endDate)}</div>
+      ${dateFlowHtml(trip.startDate, trip.endDate)}
       <div class="stats">
         <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
         <div class="stat" style="--c:#14b8a6"><div class="v">${trip.people || 1}</div><div class="l">人</div></div>
@@ -585,7 +588,7 @@ async function renderTrip(trip) {
 
   const head = presenceBar + `
     <div class="trip-hero">
-      <div class="dates" style="--c:#f59e0b">${ic('calendar')} ${dateRangeHtml(trip.startDate, trip.endDate)}</div>
+      ${dateFlowHtml(trip.startDate, trip.endDate)}
       <div class="owner-line">發起人:${esc(nameFor(trip.ownerId))}${trip.ownerId === currentUser.id ? '（你）' : '　・你是協作者'}</div>
       <div class="stats">
         <div class="stat" style="--c:#3b82f6"><div class="v">${dayCount}</div><div class="l">天</div></div>
