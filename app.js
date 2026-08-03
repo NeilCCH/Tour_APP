@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v66'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v67'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -721,12 +721,19 @@ async function renderTrip(trip) {
   app.querySelector('#add-day')?.addEventListener('click', async () => {
     await db.updateTrip(trip.id, { dayCount: dayCount + 1 }); planDay = dayCount + 1; render();
   });
-  // 每日出發時間 → 存進 trip.dayStartTime,重繪時間軸
-  app.querySelector('#day-start-time')?.addEventListener('change', async (e) => {
-    const dst = { ...(trip.dayStartTime || {}) };
-    if (e.target.value) dst[planDay] = e.target.value; else delete dst[planDay];
-    await db.updateTrip(trip.id, { dayStartTime: dst }); render();
-  });
+  // 每日出發時間:選擇過程完全不動作(避免任何重繪/同步打斷 iOS 時間選擇器);
+  // 等選好、離開欄位(blur)才一次存檔 + 重繪時間軸。
+  const dstInput = app.querySelector('#day-start-time');
+  if (dstInput) {
+    dstInput.addEventListener('blur', async () => {
+      const cur = (trip.dayStartTime || {})[planDay] || '';
+      if (dstInput.value === cur) return; // 沒改就不動
+      const dst = { ...(trip.dayStartTime || {}) };
+      if (dstInput.value) dst[planDay] = dstInput.value; else delete dst[planDay];
+      await db.updateTrip(trip.id, { dayStartTime: dst });
+      render();
+    });
+  }
   app.querySelector('#suggest')?.addEventListener('click', () => suggestArrange(trip, places, dayCount));
 
   if (tripTab === 'trip') wireMomentTab(trip, places, moments);
