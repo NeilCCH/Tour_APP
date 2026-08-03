@@ -166,8 +166,9 @@ async function createPlace(tripId, data) {
     estimatedCost: data.estimatedCost ?? 0,
     openingHours: data.openingHours || '',
     referenceUrl: data.referenceUrl || '',
-    // 交通班次資訊(交通類地點用):航空公司/航班號、搭乘與抵達時間(datetime-local 字串)
+    // 交通班次資訊(交通類地點用):航空公司/航班號、交通方式、搭乘與抵達時間
     airline: data.airline || '', flightNo: data.flightNo || '',
+    transitMode: data.transitMode || '自動', // 估時用:自動/飛機/高鐵/火車/客運/開車/渡輪/步行
     departAt: data.departAt || '', arriveAt: data.arriveAt || '',
     notes: data.notes || '', coverImage: data.coverImage || '',
     status: STATUSES.includes(data.status) ? data.status : '候選',

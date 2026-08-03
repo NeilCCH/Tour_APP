@@ -28,16 +28,37 @@ export function legModes(a, b) {
   const roadKm = straight * 1.25;
   const mk = (key, label, kmh, km) => ({ key, label, minutes: Math.max(1, Math.round((km / kmh) * 60)) });
   const modes = [];
-  const longHaul = straight > 250; // 長距離:改列駕車 + 飛機,不列市區巴士/捷運
+  const longHaul = straight > 250; // 長距離(多為跨海/跨區):只列飛機,不列市區與駕車
   if (roadKm < 8) modes.push(mk('walk', '步行', 4.5, roadKm)); // 太遠就不列步行
   if (!longHaul) {
     modes.push(mk('bus', '巴士', 14, roadKm));
     modes.push(mk('metro', '捷運', 32, straight * 1.15));
+    modes.push(mk('car', '駕車', 24, roadKm)); // 長程(可能跨海)不列駕車,避免誤導
   }
-  modes.push(mk('car', '駕車', 24, roadKm));
-  // 飛機:含報到/滑行/等待約 100 分鐘的固定折算 + 巡航(約 750 km/h)
-  if (longHaul) modes.push({ key: 'plane', label: '飛機', minutes: Math.round(100 + (straight / 750) * 60) });
+  if (longHaul) modes.push(flightEstimate(straight)); // 飛機
   return { km: roadKm, modes };
+}
+
+// 飛行時間:滑行/爬升/下降約 30 分鐘折算 + 巡航(約 800 km/h);短程也不會過長
+function flightEstimate(straight) {
+  return { key: 'plane', label: '飛機', minutes: Math.max(30, Math.round(30 + (straight / 800) * 60)) };
+}
+
+// 指定單一交通方式的估時(交通地點手動選了方式時用)。回傳 {key(圖示), label, minutes}。
+export function modeEstimate(mode, a, b) {
+  const straight = haversine(a, b);
+  const road = straight * 1.25;
+  const r = (m) => Math.max(1, Math.round(m));
+  switch (mode) {
+    case '飛機': return flightEstimate(straight);
+    case '高鐵': return { key: 'metro', label: '高鐵', minutes: r(15 + (straight / 220) * 60) };
+    case '火車': return { key: 'metro', label: '火車', minutes: r((straight * 1.15 / 75) * 60) };
+    case '客運': return { key: 'bus', label: '客運', minutes: r((road / 65) * 60) };
+    case '開車': return { key: 'car', label: '開車', minutes: r((road / 70) * 60) };
+    case '渡輪': return { key: 'ship', label: '渡輪', minutes: r(30 + (straight / 38) * 60) };
+    case '步行': return { key: 'walk', label: '步行', minutes: r((road / 4.5) * 60) };
+    default: return null;
+  }
 }
 
 // 從指定「出發點」開始就近串連（住宿當天出發點用）。沒給 start 就退回一般最近鄰。

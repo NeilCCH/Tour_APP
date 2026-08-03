@@ -10,9 +10,9 @@
 // ---------------------------------------------------------------------------
 
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
-import { geocode, geocodeCandidates, legModes, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
+import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v65'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v66'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -27,6 +27,7 @@ const ICONS = {
   metro: '<rect x="5" y="3.5" width="14" height="13" rx="3"/><path d="M5 11h14M9 16.5 7 20M15 16.5 17 20"/><circle cx="9" cy="13.8" r=".8"/><circle cx="15" cy="13.8" r=".8"/>',
   car: '<path d="M4 13 6 8.2A2 2 0 0 1 7.8 7h8.4a2 2 0 0 1 1.8 1.2L20 13"/><rect x="3.5" y="12.5" width="17" height="5" rx="2"/><circle cx="7.5" cy="17.6" r="1.3"/><circle cx="16.5" cy="17.6" r="1.3"/>',
   plane: '<path d="M21 15.5 13.5 12V6a1.5 1.5 0 0 0-3 0v6L3 15.5v2l7.5-2v3l-2 1.4V22l3-1 3 1v-1.6l-2-1.4v-3l7.5 2z"/>',
+  ship: '<path d="M4 14 5.5 9.7h13L20 14M6.5 9.7V6.6h5V9.7M12 4.2v2.4M3.4 15c1.4 1.7 2.9 1.7 4.3 0s2.9-1.7 4.3 0 2.9 1.7 4.3 0"/>',
   pin: '<path d="M12 21s6.5-6 6.5-10.5a6.5 6.5 0 0 0-13 0C5.5 15 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3.3 2"/>',
   cash: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M9.6 9.4a2.2 2.2 0 0 1 2.1-1.5h.8a2 2 0 0 1 0 4h-1a2 2 0 0 0 0 4h.8a2.2 2.2 0 0 0 2.1-1.5"/>',
@@ -66,7 +67,7 @@ function loadLeaflet() {
 }
 
 // ---- 顏色:交通模式、地點分類各給一色(淺色塊)------------------------------
-const MODE_COLORS = { walk: '#22b34a', bus: '#f97316', metro: '#8b5cf6', car: '#3b82f6', plane: '#0ea5e9' };
+const MODE_COLORS = { walk: '#22b34a', bus: '#f97316', metro: '#8b5cf6', car: '#3b82f6', plane: '#0ea5e9', ship: '#0891b2' };
 const CATEGORY_COLORS = { 景點: '#22b34a', 美食: '#f97316', 住宿: '#8b5cf6', 交通: '#3b82f6', 購物: '#ec4899', 其他: '#94a3b8' };
 const catTag = (c) => `<span class="tag cat" style="--c:${CATEGORY_COLORS[c] || '#64748b'}">${esc(c)}</span>`;
 
@@ -459,11 +460,19 @@ function anchorIdSet(trip) {
 }
 
 // 兩點之間的多模式交通估時（大、可愛的膠囊;兩點都已定位才顯示）
+// 若目的地是交通類且指定了交通方式(飛機/渡輪/高鐵…),只顯示該方式的估時。
 function legHtml(a, b) {
   if (!(hasCoord(a) && hasCoord(b))) return '';
-  const { km, modes } = legModes(a, b);
+  const km = haversine(a, b) * 1.25;
   const kmTxt = km < 1 ? '<1 km' : `${km.toFixed(1)} km`;
-  const pills = modes.map((m) => `<span class="mp" style="--c:${MODE_COLORS[m.key] || '#1f6feb'}">${ic(m.key)}${fmtTime(m.minutes)}</span>`).join('');
+  let modes, single = false;
+  if (b && b.category === '交通' && b.transitMode && b.transitMode !== '自動') {
+    const est = modeEstimate(b.transitMode, a, b);
+    if (est) { modes = [est]; single = true; } else modes = legModes(a, b).modes;
+  } else {
+    modes = legModes(a, b).modes;
+  }
+  const pills = modes.map((m) => `<span class="mp" style="--c:${MODE_COLORS[m.key] || '#1f6feb'}">${ic(m.key)}${fmtTime(m.minutes)}${single && m.label ? ' ' + esc(m.label) : ''}</span>`).join('');
   return `<div class="leg"><span class="km">${ic('pin')} ${kmTxt}</span>${pills}</div>`;
 }
 
@@ -514,9 +523,13 @@ function poolCard(p) {
 const hm2min = (hm) => { const m = /(\d{1,2}):(\d{2})/.exec(hm || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
 const min2hm = (m) => { m = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
 const timeOfDatetime = (dt) => { const m = /T(\d{2}):(\d{2})/.exec(dt || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
-// 兩點之間給時間軸用的單一交通估時:有飛機用飛機,否則用駕車;沒定位回 null
+// 兩點之間給時間軸用的單一交通估時:有指定方式用指定的;否則有飛機用飛機,再否則駕車;沒定位回 null
 function legMin(a, b) {
   if (!(hasCoord(a) && hasCoord(b))) return null;
+  if (b && b.category === '交通' && b.transitMode && b.transitMode !== '自動') {
+    const est = modeEstimate(b.transitMode, a, b);
+    if (est) return est.minutes;
+  }
   const { modes } = legModes(a, b);
   return (modes.find((m) => m.key === 'plane') || modes.find((m) => m.key === 'car') || modes[0]).minutes;
 }
@@ -1215,6 +1228,10 @@ function openPlaceSheet(tripId, place = null) {
 
     <div id="f-transport" style="${cat === '交通' ? '' : 'display:none'}">
       <div class="section-title" style="margin:.2rem 0 .5rem">交通班次(選填)</div>
+      <label class="field"><span class="lab">交通方式(估時用)</span>
+        <select id="f-transitmode" class="select">
+          ${['自動', '飛機', '高鐵', '火車', '客運', '開車', '渡輪', '步行'].map((m) => `<option value="${m}" ${(place?.transitMode || '自動') === m ? 'selected' : ''}>${m}</option>`).join('')}
+        </select></label>
       <div class="row2">
         <label class="field"><span class="lab">航空公司</span>
           <input id="f-airline" placeholder="如 長榮 / JR" value="${esc(place?.airline || '')}"></label>
@@ -1384,6 +1401,7 @@ function openPlaceSheet(tripId, place = null) {
         referenceUrl: sheet.querySelector('#f-url').value.trim(),
         airline: sheet.querySelector('#f-airline').value.trim(),
         flightNo: sheet.querySelector('#f-flightno').value.trim(),
+        transitMode: sheet.querySelector('#f-transitmode').value,
         departAt: joinDT(sheet.querySelector('#f-departdate').value, sheet.querySelector('#f-departtime').value),
         arriveAt: '',
         notes: sheet.querySelector('#f-notes').value.trim(),
