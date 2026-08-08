@@ -277,8 +277,8 @@ main { padding: 1.1rem; padding-bottom: calc(var(--safe-bottom) + 6.2rem); max-w
 .sheet h2 { font-size: 1.4rem; font-weight: 800; margin-bottom: 1rem; }
 
 /* ---- 表單元件 ---- */
-label.field { display: block; margin-bottom: .95rem; }
-label.field .lab { font-size: .9rem; font-weight: 700; color: var(--text-dim); margin-bottom: .45rem; display: block; }
+.field { display: block; margin-bottom: .95rem; }
+.field .lab { font-size: .9rem; font-weight: 700; color: var(--text-dim); margin-bottom: .45rem; display: block; }
 input, select, textarea {
   width: 100%; font-size: max(16px, 1rem); /* 至少 16px,避免 iOS 自動放大 */
   padding: .8rem .95rem; border: 1.5px solid var(--border); border-radius: 13px;

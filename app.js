@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v67'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v68'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -94,6 +94,24 @@ const CURRENCY = {
   NL: 'EUR', CH: 'CHF', CZ: 'CZK', AU: 'AUD', NZ: 'NZD', EG: 'EGP',
 };
 const countryCurrency = (code) => CURRENCY[code] || '';
+// 幣別下拉選單:常用旅遊幣別排前面(值就是花費前面顯示的字串)
+const CURRENCIES = [
+  { v: 'NT$', name: '台幣 NT$' }, { v: 'JPY', name: '日圓 JPY' }, { v: 'KRW', name: '韓元 KRW' },
+  { v: 'USD', name: '美元 USD' }, { v: 'THB', name: '泰銖 THB' }, { v: 'HKD', name: '港幣 HKD' },
+  { v: 'MOP', name: '澳門幣 MOP' }, { v: 'CNY', name: '人民幣 CNY' }, { v: 'SGD', name: '新加坡幣 SGD' },
+  { v: 'MYR', name: '馬幣 MYR' }, { v: 'VND', name: '越南盾 VND' }, { v: 'IDR', name: '印尼盾 IDR' },
+  { v: 'PHP', name: '菲國披索 PHP' }, { v: 'EUR', name: '歐元 EUR' }, { v: 'GBP', name: '英鎊 GBP' },
+  { v: 'AUD', name: '澳幣 AUD' }, { v: 'NZD', name: '紐幣 NZD' }, { v: 'CAD', name: '加幣 CAD' },
+  { v: 'CHF', name: '瑞士法郎 CHF' }, { v: 'TRY', name: '土耳其里拉 TRY' }, { v: 'AED', name: '阿聯迪拉姆 AED' },
+  { v: 'INR', name: '印度盧比 INR' }, { v: 'EGP', name: '埃及鎊 EGP' },
+];
+// 產生幣別選項;selected 若不在清單內(舊資料)也補進去
+function currencyOptions(selected) {
+  const list = CURRENCIES.slice();
+  if (selected && !list.some((c) => c.v === selected)) list.unshift({ v: selected, name: selected });
+  return `<option value="">(不填)</option>`
+    + list.map((c) => `<option value="${esc(c.v)}" ${c.v === selected ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+}
 // ISO 兩碼 → 國旗 emoji(用區域指示符號組成;iOS 會顯示成真正的旗子)
 function flagOf(code) {
   if (!code || !/^[A-Za-z]{2}$/.test(code)) return '';
@@ -2125,13 +2143,13 @@ function openMomentSheet(trip, places, moment = null, prefill = null) {
     </div>
     <label class="field"><span class="lab">想說的話 / 心情</span>
       <textarea id="m-text" rows="3" placeholder="此刻的心情、看到什麼、吃了什麼…">${esc(moment?.text || '')}</textarea></label>
-    <label class="field"><span class="lab">評分</span>
-      <div class="starpick" id="m-stars"></div></label>
+    <div class="field"><span class="lab">評分</span>
+      <div class="starpick" id="m-stars"></div></div>
     <div class="row2">
       <label class="field"><span class="lab">花費(選填)</span>
         <input id="m-spend" type="number" inputmode="decimal" min="0" value="${moment?.spend ? esc(moment.spend) : ''}"></label>
       <label class="field"><span class="lab">幣別</span>
-        <input id="m-currency" value="${esc(moment?.currency || (countryCurrency(trip.country) || ''))}" placeholder="如 JPY / NT$"></label>
+        <select id="m-currency" class="select">${currencyOptions(moment?.currency || countryCurrency(trip.country))}</select></label>
     </div>
     <label class="field"><span class="lab">關聯景點(選填,會標為已造訪)</span>
       <select id="m-place" class="select">
