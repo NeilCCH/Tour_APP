@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v68'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v69'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -88,7 +88,7 @@ const COUNTRIES = [
 const countryName = (code) => COUNTRIES.find((c) => c.code === code)?.name || '';
 // 各國常用幣別(旅途花費預設帶入,可自行改)
 const CURRENCY = {
-  JP: 'JPY', KR: 'KRW', TW: 'NT$', CN: 'CNY', HK: 'HKD', MO: 'MOP', TH: 'THB', VN: 'VND',
+  JP: 'JPY', KR: 'KRW', TW: 'NTD', CN: 'CNY', HK: 'HKD', MO: 'MOP', TH: 'THB', VN: 'VND',
   SG: 'SGD', MY: 'MYR', ID: 'IDR', PH: 'PHP', KH: 'KHR', IN: 'INR', AE: 'AED', TR: 'TRY',
   US: 'USD', CA: 'CAD', GB: 'GBP', FR: 'EUR', DE: 'EUR', IT: 'EUR', ES: 'EUR', AT: 'EUR',
   NL: 'EUR', CH: 'CHF', CZ: 'CZK', AU: 'AUD', NZ: 'NZD', EG: 'EGP',
@@ -96,7 +96,7 @@ const CURRENCY = {
 const countryCurrency = (code) => CURRENCY[code] || '';
 // 幣別下拉選單:常用旅遊幣別排前面(值就是花費前面顯示的字串)
 const CURRENCIES = [
-  { v: 'NT$', name: '台幣 NT$' }, { v: 'JPY', name: '日圓 JPY' }, { v: 'KRW', name: '韓元 KRW' },
+  { v: 'NTD', name: '台幣 NTD' }, { v: 'JPY', name: '日圓 JPY' }, { v: 'KRW', name: '韓元 KRW' },
   { v: 'USD', name: '美元 USD' }, { v: 'THB', name: '泰銖 THB' }, { v: 'HKD', name: '港幣 HKD' },
   { v: 'MOP', name: '澳門幣 MOP' }, { v: 'CNY', name: '人民幣 CNY' }, { v: 'SGD', name: '新加坡幣 SGD' },
   { v: 'MYR', name: '馬幣 MYR' }, { v: 'VND', name: '越南盾 VND' }, { v: 'IDR', name: '印尼盾 IDR' },
