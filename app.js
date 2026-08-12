@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v73'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v74'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1935,11 +1935,14 @@ async function generateBookPDF(trip, places, moments, opts) {
   root.className = 'pdf-book';
   root.innerHTML = pdfBookHtml(trip, places, chosen, opts, photoUrls);
   document.body.appendChild(root);
+  // 等所有圖片都 decode 完成,html2canvas 才不會抓到空白圖
+  await Promise.all([...root.querySelectorAll('img')].map((im) =>
+    (im.complete && im.naturalWidth) ? null : im.decode().catch(() => {})));
   try {
     const blob = await html2pdf().set({
       margin: [10, 10, 12, 10],
-      image: { type: 'jpeg', quality: 0.92 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      image: { type: 'jpeg', quality: 0.9 },
+      html2canvas: { scale: 1.6, useCORS: true, backgroundColor: '#ffffff', imageTimeout: 0, scrollX: 0, scrollY: 0, windowWidth: 900 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] },
     }).from(root).outputPdf('blob');
