@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v70'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v71'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -2019,6 +2019,7 @@ function openVideoMaker(trip, places, moments) {
     <div class="bm-actions"><button type="button" class="chip" id="vm-all">全選</button><button type="button" class="chip" id="vm-none">全不選</button></div>
     <div class="bm-list">${photos.length ? rows : '<div class="meta">還沒有照片。先到「旅途」加幾張照片。</div>'}</div>
     <div class="vm-progress" id="vm-progress" style="display:none"><div class="vm-bar" id="vm-bar"></div></div>
+    <div id="vm-result" style="margin:.4rem 0"></div>
     <div id="vm-msg" class="meta" style="min-height:1.1em;margin:.5rem 0"></div>
     <div class="btn-row">
       <button class="btn primary" id="vm-go" ${supported ? '' : 'disabled'}>生成影片</button>
@@ -2064,14 +2065,18 @@ function openVideoMaker(trip, places, moments) {
         const blob = await generateVideoBlob(trip.name, imgs, dur, dims, (p) => { bar.style.width = Math.round(p * 100) + '%'; });
         const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
         const file = new File([blob], `回顧影片-${trip.name}.${ext}`, { type: blob.type });
-        msg.style.color = 'var(--accent)'; msg.textContent = '完成!在跳出的視窗選「儲存影片 / 儲存到檔案」。';
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try { await navigator.share({ files: [file], title: trip.name }); } catch (e) { if (e.name !== 'AbortError') throw e; }
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
-          setTimeout(() => URL.revokeObjectURL(url), 3000);
-        }
+        const url = URL.createObjectURL(blob);
+        // 錄製要 30~120 秒,原本點擊的授權早就過期 → 不自動分享;顯示預覽 + 讓使用者「親手點」儲存
+        const result = sheet.querySelector('#vm-result');
+        result.innerHTML = `<video src="${url}" controls playsinline style="width:100%;border-radius:12px;background:#000"></video>
+          <button type="button" class="btn primary" id="vm-save" style="margin-top:.5rem">${ic('suitcase')} 儲存 / 分享影片</button>`;
+        result.querySelector('#vm-save').onclick = async () => {
+          try {
+            if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: trip.name }); return; }
+          } catch (e) { if (e.name === 'AbortError') return; }
+          const a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); // 後備:下載
+        };
+        msg.style.color = 'var(--accent)'; msg.textContent = '完成!預覽下方影片,按「儲存 / 分享影片」存到相簿或檔案。';
       } catch (e) {
         msg.style.color = 'var(--danger)'; msg.textContent = '生成失敗:' + (e.message || e);
       } finally {
