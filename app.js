@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v71'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v72'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1851,6 +1851,17 @@ function openBookMaker(trip, places, moments) {
 }
 
 // 組出旅遊書的列印用 HTML(白底黑字,獨立於 App 主題)
+// 依行程日程排序 moments:先依關聯景點的「天」(Day1→最後),同天再依時間先後
+function scheduleSortedMoments(moments, places) {
+  const dayOf = new Map(places.map((p) => [p.id, p.assignedDay || 99]));
+  return moments.slice().sort((a, b) => {
+    const da = (a.placeId && dayOf.get(a.placeId)) || 99;
+    const db2 = (b.placeId && dayOf.get(b.placeId)) || 99;
+    if (da !== db2) return da - db2;
+    return (a.takenAt || 0) - (b.takenAt || 0);
+  });
+}
+
 function pdfBookHtml(trip, places, chosen, opts, photoUrls) {
   const byId = new Map(places.map((p) => [p.id, p]));
   const dayCount = tripDayCount(trip, places);
@@ -1870,14 +1881,19 @@ function pdfBookHtml(trip, places, chosen, opts, photoUrls) {
       <div><b>${chosen.length}</b><span>入選點滴</span></div>
       ${totalSpend ? `<div><b>${totalSpend.toLocaleString()}</b><span>花費</span></div>` : ''}</section>`;
   }
+  // 依行程日程分組:用關聯景點的「天」(Day1→最後);沒關聯景點的歸「其他」放最後
   const groups = new Map();
-  chosen.slice().sort((a, b) => (a.takenAt || 0) - (b.takenAt || 0)).forEach((m) => {
-    const k = dayKey(m.takenAt);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(m);
+  scheduleSortedMoments(chosen, places).forEach((m) => {
+    const day = (m.placeId && byId.get(m.placeId)?.assignedDay) || 0;
+    const key = day || 9999;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
   });
-  for (const list of groups.values()) {
-    h += `<section class="pb-day"><h2>${dayLabel(list[0].takenAt)}</h2>`;
+  const dayKeys = [...groups.keys()].sort((a, b) => a - b);
+  for (const key of dayKeys) {
+    const list = groups.get(key);
+    const header = key === 9999 ? '其他' : `Day ${key}${trip.startDate ? ' · ' + dayDateLabel(trip.startDate, key) : ''}`;
+    h += `<section class="pb-day"><h2>${header}</h2>`;
     for (const m of list) {
       const place = m.placeId ? byId.get(m.placeId) : null;
       const url = photoUrls[m.id];
@@ -1968,8 +1984,9 @@ function makeBgSmall(img) {
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
   return c;
 }
-// 一張投影片:模糊底(cover + Ken Burns)+ 暗化 + 完整照片(contain,不裁切)
-function drawSlide(ctx, img, bgSmall, W, H, kbScale) {
+// 一張投影片:模糊底(cover + Ken Burns)+ 暗化 + 完整照片(contain,不裁切)。
+// tf:前景轉場變換 { scale, rotate(弧度), dx, dy(佔畫面比例) },用於進場特效。
+function drawSlide(ctx, img, bgSmall, W, H, kbScale, tf) {
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   const bs = Math.max(W / bgSmall.width, H / bgSmall.height) * kbScale;
   const bw = bgSmall.width * bs, bh = bgSmall.height * bs;
@@ -1977,7 +1994,30 @@ function drawSlide(ctx, img, bgSmall, W, H, kbScale) {
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 0, W, H); // 暗化,主體更清楚
   const f = Math.min(W / img.width, H / img.height);           // contain:整張照片,不裁切
   const fw = img.width * f, fh = img.height * f;
-  ctx.drawImage(img, (W - fw) / 2, (H - fh) / 2, fw, fh);
+  ctx.save();
+  ctx.translate(W / 2 + (tf?.dx || 0) * W, H / 2 + (tf?.dy || 0) * H);
+  if (tf?.rotate) ctx.rotate(tf.rotate);
+  if (tf?.scale && tf.scale !== 1) ctx.scale(tf.scale, tf.scale);
+  ctx.drawImage(img, -fw / 2, -fh / 2, fw, fh);
+  ctx.restore();
+}
+// 進場轉場:依索引輪流用不同特效;e=進場進度(0→1)
+const VID_TRANSITIONS = ['zoomIn', 'zoomOut', 'rotateCW', 'rotateCCW', 'slideUp', 'slideDown', 'slideLeft', 'slideRight'];
+function transitionTf(idx, e) {
+  const k = 1 - Math.pow(1 - Math.min(1, Math.max(0, e)), 3); // easeOutCubic
+  const tf = { scale: 1, rotate: 0, dx: 0, dy: 0 };
+  const d = 12 * Math.PI / 180;
+  switch (VID_TRANSITIONS[idx % VID_TRANSITIONS.length]) {
+    case 'zoomIn': tf.scale = 0.72 + 0.28 * k; break;
+    case 'zoomOut': tf.scale = 1.32 - 0.32 * k; break;
+    case 'rotateCW': tf.rotate = -d + d * k; tf.scale = 0.9 + 0.1 * k; break;
+    case 'rotateCCW': tf.rotate = d - d * k; tf.scale = 0.9 + 0.1 * k; break;
+    case 'slideUp': tf.dy = 0.3 * (1 - k); break;
+    case 'slideDown': tf.dy = -0.3 * (1 - k); break;
+    case 'slideLeft': tf.dx = 0.3 * (1 - k); break;
+    case 'slideRight': tf.dx = -0.3 * (1 - k); break;
+  }
+  return tf;
 }
 function wrapText(ctx, text, cx, cy, maxW, lh) {
   const lines = []; let line = '';
@@ -1991,7 +2031,7 @@ function wrapText(ctx, text, cx, cy, maxW, lh) {
 
 function openVideoMaker(trip, places, moments) {
   const byId = new Map(places.map((p) => [p.id, p]));
-  const photos = moments.filter((m) => m.photoId);
+  const photos = scheduleSortedMoments(moments.filter((m) => m.photoId), places); // 依行程日程排序
   const rows = photos.map((m) => {
     const place = m.placeId ? byId.get(m.placeId) : null;
     const label = [hhmm(m.takenAt), place ? place.name : '', m.text ? m.text.slice(0, 16) : ''].filter(Boolean).join(' · ') || '照片';
@@ -2103,6 +2143,7 @@ async function generateVideoBlob(title, imgs, durationSec, dims, onProgress) {
   const bgs = imgs.map(makeBgSmall); // 預先做好每張的模糊底(縮圖),錄製時直接放大用
   const perPhoto = (durationSec - titleSec) / n;
   const fade = Math.min(0.6, perPhoto * 0.3);
+  const enterDur = Math.min(0.8, perPhoto * 0.45); // 進場特效時長
   rec.start();
   const start = performance.now();
   await new Promise((resolve) => {
@@ -2119,11 +2160,12 @@ async function generateVideoBlob(title, imgs, durationSec, dims, onProgress) {
         const tt = t - titleSec;
         let idx = Math.floor(tt / perPhoto); if (idx >= n) idx = n - 1;
         const local = tt - idx * perPhoto;
-        // 前景整張不裁切;Ken Burns 運鏡跑在模糊底上
-        drawSlide(ctx, imgs[idx], bgs[idx], W, H, 1.0 + 0.12 * (local / perPhoto));
+        // 前景整張不裁切;進場用轉場特效,穩定後 Ken Burns 運鏡在模糊底上
+        drawSlide(ctx, imgs[idx], bgs[idx], W, H, 1.0 + 0.12 * (local / perPhoto), transitionTf(idx, local / enterDur));
         if (idx < n - 1 && local > perPhoto - fade) {
-          ctx.globalAlpha = (local - (perPhoto - fade)) / fade;
-          drawSlide(ctx, imgs[idx + 1], bgs[idx + 1], W, H, 1.0);
+          const a = (local - (perPhoto - fade)) / fade;
+          ctx.globalAlpha = a;
+          drawSlide(ctx, imgs[idx + 1], bgs[idx + 1], W, H, 1.0, transitionTf(idx + 1, a)); // 下一張邊淡入邊進場
           ctx.globalAlpha = 1;
         }
       }
