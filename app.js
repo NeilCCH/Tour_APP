@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v74'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v75'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1810,10 +1810,21 @@ function openBookMaker(trip, places, moments) {
     <div class="lab" style="margin:.2rem 0 .4rem">要包含的區塊</div>
     <label class="bm-opt"><input type="checkbox" id="bm-cover" checked> 封面</label>
     <label class="bm-opt"><input type="checkbox" id="bm-stats" checked> 數字回顧</label>
+    <div class="lab" style="margin:.6rem 0 .4rem">底圖(每頁底部,淡化柔邊)</div>
+    <div class="bm-back">
+      <img id="bm-back-preview" class="bm-thumb" alt="" style="display:none">
+      <div id="bm-back-ph" class="bm-thumb ph">🖼️</div>
+      <div style="flex:1">
+        <label class="btn ghost" style="width:auto;padding:.5rem .9rem;display:inline-block;cursor:pointer">上傳照片<input type="file" id="bm-back-file" accept="image/*" hidden></label>
+        <button type="button" class="chip" id="bm-back-first">用第一張入選照片</button>
+        <div class="meta" id="bm-back-note" style="margin-top:.3rem">未選則自動用第一張入選照片</div>
+      </div>
+    </div>
     <div class="lab" style="margin:.6rem 0 .4rem">選擇素材(預設全選,取消不想放的)</div>
     <div class="bm-actions"><button type="button" class="chip" id="bm-all">全選</button><button type="button" class="chip" id="bm-none">全不選</button></div>
     <div class="bm-list">${materials.length ? rows : '<div class="meta">還沒有可放進旅遊書的記錄。先到「旅途」記幾筆。</div>'}</div>
     <div id="bm-msg" class="meta" style="min-height:1.1em;margin:.5rem 0"></div>
+    <div id="bm-result" style="margin:.4rem 0"></div>
     <div class="btn-row">
       <button class="btn primary" id="bm-go">生成 PDF</button>
       <button class="btn ghost" id="bm-cancel">取消</button>
@@ -1827,23 +1838,62 @@ function openBookMaker(trip, places, moments) {
     sheet.querySelector('#bm-all').onclick = () => picks().forEach((c) => { c.checked = true; });
     sheet.querySelector('#bm-none').onclick = () => picks().forEach((c) => { c.checked = false; });
     sheet.querySelector('#bm-cancel').onclick = close;
+
+    // 底圖選擇:上傳一張 或 用第一張入選照片(否則生成時自動抓第一張)
+    let backdropUrl = '';
+    const backPrev = sheet.querySelector('#bm-back-preview');
+    const backPh = sheet.querySelector('#bm-back-ph');
+    const backNote = sheet.querySelector('#bm-back-note');
+    const setBack = (url, note) => {
+      backdropUrl = url || '';
+      if (url) { backPrev.src = url; backPrev.style.display = ''; backPh.style.display = 'none'; }
+      else { backPrev.removeAttribute('src'); backPrev.style.display = 'none'; backPh.style.display = ''; }
+      backNote.textContent = note;
+    };
+    sheet.querySelector('#bm-back-file').onchange = (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = () => setBack(r.result, '已選:上傳的照片');
+      r.readAsDataURL(f);
+    };
+    sheet.querySelector('#bm-back-first').onclick = async () => {
+      const first = picks().filter((c) => c.checked).map((c) => c.value)
+        .map((id) => moments.find((m) => m.id === id)).find((m) => m && m.photoId);
+      if (!first) { setBack('', '入選素材裡沒有照片可當底圖'); return; }
+      const u = await db.getAsset(first.photoId).catch(() => null);
+      setBack(u || '', u ? '已選:第一張入選照片' : '照片不在本機');
+    };
+
     sheet.querySelector('#bm-go').onclick = async () => {
       const opts = {
         title: sheet.querySelector('#bm-title').value.trim() || trip.name,
         cover: sheet.querySelector('#bm-cover').checked,
         stats: sheet.querySelector('#bm-stats').checked,
         momentIds: new Set(picks().filter((c) => c.checked).map((c) => c.value)),
+        backdropUrl,
       };
       const msg = sheet.querySelector('#bm-msg');
       const go = sheet.querySelector('#bm-go');
+      const result = sheet.querySelector('#bm-result');
       if (!opts.momentIds.size && !opts.cover && !opts.stats) { msg.style.color = 'var(--danger)'; msg.textContent = '至少選一個區塊或一則素材。'; return; }
-      go.disabled = true; msg.style.color = 'var(--text-dim)'; msg.textContent = '產生中…(第一次會下載排版元件,約幾秒,請稍候)';
+      go.disabled = true; result.innerHTML = ''; msg.style.color = 'var(--text-dim)'; msg.textContent = '產生中…(第一次會下載排版元件,約幾秒,請稍候)';
       try {
-        await generateBookPDF(trip, places, moments, opts);
-        msg.style.color = 'var(--accent)'; msg.textContent = '完成!在跳出的視窗選「儲存到檔案」即可。';
-        setTimeout(close, 1000);
+        const { blob, filename } = await generateBookPDF(trip, places, moments, opts);
+        const file = new File([blob], filename, { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        // PDF 生成需數秒,原本點擊的授權可能過期 → 不自動分享;讓使用者「親手點」儲存(新的手勢)
+        result.innerHTML = `<button type="button" class="btn primary" id="bm-save">${ic('suitcase')} 儲存 / 分享 PDF</button>`;
+        result.querySelector('#bm-save').onclick = async () => {
+          try {
+            if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: opts.title }); return; }
+          } catch (e) { if (e.name === 'AbortError') return; }
+          const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); // 後備:下載
+        };
+        msg.style.color = 'var(--accent)'; msg.textContent = '完成!按「儲存 / 分享 PDF」存到檔案。';
       } catch (e) {
-        msg.style.color = 'var(--danger)'; msg.textContent = '產生失敗:' + (e.message || e) + '(需要網路載入排版元件)';
+        msg.style.color = 'var(--danger)'; msg.textContent = '產生失敗:' + (e.message || e);
+      } finally {
         go.disabled = false;
       }
     };
@@ -1926,37 +1976,148 @@ function loadHtml2pdf() {
   return _html2pdfPromise;
 }
 
-async function generateBookPDF(trip, places, moments, opts) {
-  const html2pdf = await loadHtml2pdf();
-  const chosen = moments.filter((m) => opts.momentIds.has(m.id));
-  const photoUrls = {};
-  for (const m of chosen) if (m.photoId) photoUrls[m.id] = await db.getAsset(m.photoId).catch(() => null);
-  const root = document.createElement('div');
-  root.className = 'pdf-book';
-  root.innerHTML = pdfBookHtml(trip, places, chosen, opts, photoUrls);
-  document.body.appendChild(root);
-  // 等所有圖片都 decode 完成,html2canvas 才不會抓到空白圖
-  await Promise.all([...root.querySelectorAll('img')].map((im) =>
-    (im.complete && im.naturalWidth) ? null : im.decode().catch(() => {})));
-  try {
-    const blob = await html2pdf().set({
-      margin: [10, 10, 12, 10],
-      image: { type: 'jpeg', quality: 0.9 },
-      html2canvas: { scale: 1.6, useCORS: true, backgroundColor: '#ffffff', imageTimeout: 0, scrollX: 0, scrollY: 0, windowWidth: 900 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] },
-    }).from(root).outputPdf('blob');
-    const file = new File([blob], `旅遊書-${opts.title}.pdf`, { type: 'application/pdf' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: opts.title }); return; }
-      catch (e) { if (e.name === 'AbortError') return; }
-    }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  } finally {
-    root.remove();
+// jsPDF UMD 載入
+let _jspdfPromise = null;
+function loadJsPDF() {
+  if (window.jspdf?.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (_jspdfPromise) return _jspdfPromise;
+  _jspdfPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
+    s.onload = () => window.jspdf?.jsPDF ? resolve(window.jspdf.jsPDF) : reject(new Error('排版元件載入異常'));
+    s.onerror = () => reject(new Error('無法載入排版元件(需要網路)'));
+    document.head.appendChild(s);
+  });
+  return _jspdfPromise;
+}
+
+const PGW = 1190, PGH = 1683; // 頁面畫布(A4 比例);逐頁畫、逐頁貼進 PDF,避免 html2canvas 空白/過大問題
+function pdfWrap(ctx, text, x, y, maxW, lineH, maxLines) {
+  const lines = []; let line = '';
+  for (const ch of String(text)) {
+    if (ch === '\n') { lines.push(line); line = ''; continue; }
+    if (ctx.measureText(line + ch).width > maxW && line) { lines.push(line); line = ch; } else line += ch;
   }
+  if (line) lines.push(line);
+  const use = maxLines ? lines.slice(0, maxLines) : lines;
+  if (maxLines && lines.length > maxLines && use.length) use[use.length - 1] = use[use.length - 1].slice(0, -1) + '…';
+  use.forEach((l, i) => ctx.fillText(l, x, y + i * lineH));
+  return y + use.length * lineH;
+}
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function drawContain(ctx, img, x, y, boxW, boxH, radius) {
+  const f = Math.min(boxW / img.width, boxH / img.height);
+  const w = img.width * f, h = img.height * f, dx = x + (boxW - w) / 2, dy = y;
+  ctx.save();
+  if (radius) { roundRectPath(ctx, dx, dy, w, h, radius); ctx.clip(); }
+  ctx.drawImage(img, dx, dy, w, h);
+  ctx.restore();
+  return { w, h, dx, dy };
+}
+// 底圖:淡化 30% + 柔邊(徑向羽化),置於頁面底部,posKey 決定左/中/右
+function drawBackdrop(ctx, img, posKey) {
+  const w = Math.round(PGW * 0.52), h = Math.round(w * img.height / img.width);
+  const off = document.createElement('canvas'); off.width = w; off.height = h;
+  const o = off.getContext('2d');
+  o.drawImage(img, 0, 0, w, h);
+  o.globalCompositeOperation = 'destination-in'; // 用羽化遮罩做柔邊
+  const g = o.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.12, w / 2, h / 2, Math.max(w, h) * 0.58);
+  g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.65, 'rgba(0,0,0,0.9)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  o.fillStyle = g; o.fillRect(0, 0, w, h);
+  const margin = PGW * 0.03;
+  const x = posKey === 'left' ? margin : posKey === 'right' ? PGW - margin - w : (PGW - w) / 2;
+  const y = PGH - h * 0.82; // 底部,略微出血
+  ctx.save(); ctx.globalAlpha = 0.3; ctx.drawImage(off, x, y); ctx.restore();
+}
+
+// 用 jsPDF + 逐頁 canvas 產生旅遊書 PDF;回傳 { blob, filename }(分享/下載交給呼叫端在使用者點擊時做)
+async function generateBookPDF(trip, places, moments, opts) {
+  const jsPDF = await loadJsPDF();
+  const chosen = moments.filter((m) => opts.momentIds.has(m.id));
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const dayCount = tripDayCount(trip, places);
+
+  // 底圖影像:優先用使用者上傳的,否則用第一張入選照片
+  let backImg = null;
+  let backUrl = opts.backdropUrl;
+  if (!backUrl) { const fp = chosen.find((m) => m.photoId); if (fp) backUrl = await db.getAsset(fp.photoId).catch(() => null); }
+  if (backUrl) backImg = await loadImg(backUrl).catch(() => null);
+
+  // 依日程分組
+  const groups = new Map();
+  scheduleSortedMoments(chosen, places).forEach((m) => {
+    const key = ((m.placeId && byId.get(m.placeId)?.assignedDay) || 0) || 9999;
+    if (!groups.has(key)) groups.set(key, []); groups.get(key).push(m);
+  });
+
+  const pages = [];
+  const newPage = () => { const c = document.createElement('canvas'); c.width = PGW; c.height = PGH; const ctx = c.getContext('2d'); ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, PGW, PGH); return { c, ctx }; };
+
+  // 封面
+  if (opts.cover) {
+    const { c, ctx } = newPage();
+    const g = ctx.createLinearGradient(0, 0, PGW, PGH * 0.44);
+    g.addColorStop(0, '#14b8a6'); g.addColorStop(1, '#0d7d76');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, PGW, PGH * 0.44);
+    if (backImg) drawBackdrop(ctx, backImg, 'center');
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff'; ctx.font = '128px sans-serif'; ctx.fillText(trip.country ? flagOf(trip.country) : '🧳', PGW / 2, PGH * 0.17);
+    ctx.font = '700 82px sans-serif'; pdfWrap(ctx, opts.title || trip.name, PGW / 2, PGH * 0.27, PGW * 0.82, 96, 2);
+    ctx.font = '600 42px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.fillText(fmtDateRange(trip.startDate, trip.endDate) + (trip.country ? ' · ' + countryName(trip.country) : ''), PGW / 2, PGH * 0.4);
+    if (opts.stats) {
+      const visited = places.filter((p) => p.status === '已造訪').length;
+      const totalSpend = chosen.reduce((s, m) => s + (Number(m.spend) || 0), 0);
+      const cells = [[dayCount, '天'], [visited, '造訪地'], [chosen.length, '點滴']];
+      if (totalSpend) cells.push([totalSpend.toLocaleString(), '花費']);
+      const cw = PGW * 0.86 / cells.length, sx = PGW * 0.07, sy = PGH * 0.56;
+      cells.forEach(([v, l], i) => {
+        const cx = sx + cw * i + cw / 2;
+        ctx.fillStyle = '#0d7d76'; ctx.font = '700 74px sans-serif'; ctx.fillText(String(v), cx, sy);
+        ctx.fillStyle = '#777'; ctx.font = '600 34px sans-serif'; ctx.fillText(l, cx, sy + 54);
+      });
+    }
+    pages.push(c);
+  }
+
+  // 每天一頁
+  const POS = ['left', 'center', 'right'];
+  for (let day = 1; day <= dayCount; day++) {
+    const list = groups.get(day) || [];
+    const { c, ctx } = newPage();
+    if (backImg) drawBackdrop(ctx, backImg, POS[Math.floor(Math.random() * 3)]); // 隨機置底左/中/右
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#0d7d76'; ctx.font = '700 78px sans-serif'; ctx.fillText('Day ' + day, 84, 132);
+    if (trip.startDate) { ctx.fillStyle = '#666'; ctx.font = '600 40px sans-serif'; ctx.fillText(dayDateLabel(trip.startDate, day), 320, 130); }
+    ctx.strokeStyle = '#0d7d76'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(84, 162); ctx.lineTo(PGW - 84, 162); ctx.stroke();
+
+    let y = 226; const bottom = PGH - 90;
+    if (!list.length) { ctx.fillStyle = '#999'; ctx.font = '400 42px sans-serif'; ctx.fillText('這天沒有選入的點滴', 88, 280); }
+    for (const m of list) {
+      if (y > bottom) break;
+      const place = m.placeId ? byId.get(m.placeId) : null;
+      const caps = [hhmm(m.takenAt)]; if (place) caps.push(place.name);
+      if (m.weather) caps.push(`${wmoEmoji(m.weather.code)} ${m.weather.temp}°`);
+      if (m.rating) caps.push('★'.repeat(m.rating));
+      if (m.photoId) {
+        const u = await db.getAsset(m.photoId).catch(() => null);
+        if (u) { const im = await loadImg(u).catch(() => null); if (im) { const r = drawContain(ctx, im, 84, y, PGW - 168, 600, 22); y = r.dy + r.h + 12; } }
+      }
+      ctx.fillStyle = '#0d7d76'; ctx.font = '600 32px sans-serif'; ctx.fillText(caps.join(' · '), 88, y + 30); y += 48;
+      if (m.text) { ctx.fillStyle = '#222'; ctx.font = '400 38px sans-serif'; y = pdfWrap(ctx, m.text, 88, y + 32, PGW - 176, 52, 3) + 22; }
+      y += 20;
+    }
+    pages.push(c);
+  }
+
+  const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+  const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight();
+  pages.forEach((c, i) => { if (i > 0) doc.addPage(); doc.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pw, ph); });
+  return { blob: doc.output('blob'), filename: `旅遊書-${opts.title || trip.name}.pdf` };
 }
 
 // ---- 製作回顧影片:挑照片 → 即時錄成投影片影片(Ken Burns + 淡入淡出)----------
