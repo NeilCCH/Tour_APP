@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v69'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v70'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1895,9 +1895,23 @@ function pdfBookHtml(trip, places, chosen, opts, photoUrls) {
   return h;
 }
 
+// html2pdf 是瀏覽器 UMD 函式庫,用 script 標籤載入取 window.html2pdf(比 esm 匯入穩定)
+let _html2pdfPromise = null;
+function loadHtml2pdf() {
+  if (window.html2pdf) return Promise.resolve(window.html2pdf);
+  if (_html2pdfPromise) return _html2pdfPromise;
+  _html2pdfPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js';
+    s.onload = () => window.html2pdf ? resolve(window.html2pdf) : reject(new Error('排版元件載入異常'));
+    s.onerror = () => reject(new Error('無法載入排版元件(需要網路)'));
+    document.head.appendChild(s);
+  });
+  return _html2pdfPromise;
+}
+
 async function generateBookPDF(trip, places, moments, opts) {
-  const mod = await import('https://esm.sh/html2pdf.js@0.10.2');
-  const html2pdf = mod.default || mod;
+  const html2pdf = await loadHtml2pdf();
   const chosen = moments.filter((m) => opts.momentIds.has(m.id));
   const photoUrls = {};
   for (const m of chosen) if (m.photoId) photoUrls[m.id] = await db.getAsset(m.photoId).catch(() => null);
