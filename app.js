@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v72'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v73'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -2001,21 +2001,22 @@ function drawSlide(ctx, img, bgSmall, W, H, kbScale, tf) {
   ctx.drawImage(img, -fw / 2, -fh / 2, fw, fh);
   ctx.restore();
 }
-// 進場轉場:依索引輪流用不同特效;e=進場進度(0→1)
+// 進場轉場:style 為特效名稱('fade' 或空 = 只淡入不變形);e=進場進度(0→1)
 const VID_TRANSITIONS = ['zoomIn', 'zoomOut', 'rotateCW', 'rotateCCW', 'slideUp', 'slideDown', 'slideLeft', 'slideRight'];
-function transitionTf(idx, e) {
-  const k = 1 - Math.pow(1 - Math.min(1, Math.max(0, e)), 3); // easeOutCubic
+function transitionTf(style, e) {
   const tf = { scale: 1, rotate: 0, dx: 0, dy: 0 };
-  const d = 12 * Math.PI / 180;
-  switch (VID_TRANSITIONS[idx % VID_TRANSITIONS.length]) {
-    case 'zoomIn': tf.scale = 0.72 + 0.28 * k; break;
-    case 'zoomOut': tf.scale = 1.32 - 0.32 * k; break;
-    case 'rotateCW': tf.rotate = -d + d * k; tf.scale = 0.9 + 0.1 * k; break;
-    case 'rotateCCW': tf.rotate = d - d * k; tf.scale = 0.9 + 0.1 * k; break;
-    case 'slideUp': tf.dy = 0.3 * (1 - k); break;
-    case 'slideDown': tf.dy = -0.3 * (1 - k); break;
-    case 'slideLeft': tf.dx = 0.3 * (1 - k); break;
-    case 'slideRight': tf.dx = -0.3 * (1 - k); break;
+  if (!style || style === 'fade') return tf;
+  const k = 1 - Math.pow(1 - Math.min(1, Math.max(0, e)), 3); // easeOutCubic
+  const d = 10 * Math.PI / 180;
+  switch (style) {
+    case 'zoomIn': tf.scale = 0.78 + 0.22 * k; break;
+    case 'zoomOut': tf.scale = 1.25 - 0.25 * k; break;
+    case 'rotateCW': tf.rotate = -d + d * k; tf.scale = 0.92 + 0.08 * k; break;
+    case 'rotateCCW': tf.rotate = d - d * k; tf.scale = 0.92 + 0.08 * k; break;
+    case 'slideUp': tf.dy = 0.28 * (1 - k); break;
+    case 'slideDown': tf.dy = -0.28 * (1 - k); break;
+    case 'slideLeft': tf.dx = 0.28 * (1 - k); break;
+    case 'slideRight': tf.dx = -0.28 * (1 - k); break;
   }
   return tf;
 }
@@ -2142,8 +2143,10 @@ async function generateVideoBlob(title, imgs, durationSec, dims, onProgress) {
   const n = imgs.length;
   const bgs = imgs.map(makeBgSmall); // 預先做好每張的模糊底(縮圖),錄製時直接放大用
   const perPhoto = (durationSec - titleSec) / n;
-  const fade = Math.min(0.6, perPhoto * 0.3);
-  const enterDur = Math.min(0.8, perPhoto * 0.45); // 進場特效時長
+  const transDur = Math.min(0.7, perPhoto * 0.4); // 每張出場時的進場時長
+  // 每張的進場方式:第一張與多數為單純淡入('fade'),隨機約 40% 跳一個隨機特效
+  const styles = imgs.map((_, i) => (i > 0 && Math.random() < 0.4) ? VID_TRANSITIONS[Math.floor(Math.random() * VID_TRANSITIONS.length)] : 'fade');
+  const easeOut = (p) => 1 - Math.pow(1 - Math.min(1, Math.max(0, p)), 3);
   rec.start();
   const start = performance.now();
   await new Promise((resolve) => {
@@ -2160,13 +2163,17 @@ async function generateVideoBlob(title, imgs, durationSec, dims, onProgress) {
         const tt = t - titleSec;
         let idx = Math.floor(tt / perPhoto); if (idx >= n) idx = n - 1;
         const local = tt - idx * perPhoto;
-        // 前景整張不裁切;進場用轉場特效,穩定後 Ken Burns 運鏡在模糊底上
-        drawSlide(ctx, imgs[idx], bgs[idx], W, H, 1.0 + 0.12 * (local / perPhoto), transitionTf(idx, local / enterDur));
-        if (idx < n - 1 && local > perPhoto - fade) {
-          const a = (local - (perPhoto - fade)) / fade;
-          ctx.globalAlpha = a;
-          drawSlide(ctx, imgs[idx + 1], bgs[idx + 1], W, H, 1.0, transitionTf(idx + 1, a)); // 下一張邊淡入邊進場
+        const kb = 1.0 + 0.09 * (local / perPhoto); // 模糊底的輕微 Ken Burns
+        if (local < transDur) {
+          // 出場時進場一次:前一張墊底,這張淡入(多數)或淡入+特效(隨機)
+          const p = easeOut(local / transDur);
+          if (idx > 0) drawSlide(ctx, imgs[idx - 1], bgs[idx - 1], W, H, 1.0, null);
+          ctx.globalAlpha = p;
+          drawSlide(ctx, imgs[idx], bgs[idx], W, H, kb, transitionTf(styles[idx], local / transDur));
           ctx.globalAlpha = 1;
+        } else {
+          // 穩定顯示:完整照片、不變形(只有模糊底輕微運鏡)
+          drawSlide(ctx, imgs[idx], bgs[idx], W, H, kb, null);
         }
       }
       onProgress && onProgress(Math.min(1, t / durationSec));
