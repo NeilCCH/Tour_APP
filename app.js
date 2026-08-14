@@ -12,7 +12,7 @@
 import { db, CATEGORIES, STATUSES, DEFAULT_STAY } from './db.js';
 import { geocode, geocodeCandidates, legModes, modeEstimate, orderFromStart, nearestOrder, kmeansDays, orderClusters, haversine } from './geo.js';
 
-const APP_VERSION = 'v75'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
+const APP_VERSION = 'v76'; // 顯示在帳號視窗,方便確認手機跑的是哪一版
 const app = document.getElementById('app');
 const header = document.getElementById('header');
 
@@ -1826,7 +1826,7 @@ function openBookMaker(trip, places, moments) {
     <div id="bm-msg" class="meta" style="min-height:1.1em;margin:.5rem 0"></div>
     <div id="bm-result" style="margin:.4rem 0"></div>
     <div class="btn-row">
-      <button class="btn primary" id="bm-go">生成 PDF</button>
+      <button class="btn primary" id="bm-go">生成並儲存 PDF</button>
       <button class="btn ghost" id="bm-cancel">取消</button>
     </div>
   `, (sheet, close) => {
@@ -1878,21 +1878,35 @@ function openBookMaker(trip, places, moments) {
       const result = sheet.querySelector('#bm-result');
       if (!opts.momentIds.size && !opts.cover && !opts.stats) { msg.style.color = 'var(--danger)'; msg.textContent = '至少選一個區塊或一則素材。'; return; }
       go.disabled = true; result.innerHTML = ''; msg.style.color = 'var(--text-dim)'; msg.textContent = '產生中…(第一次會下載排版元件,約幾秒,請稍候)';
+      let out;
       try {
-        const { blob, filename } = await generateBookPDF(trip, places, moments, opts);
-        const file = new File([blob], filename, { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        // PDF 生成需數秒,原本點擊的授權可能過期 → 不自動分享;讓使用者「親手點」儲存(新的手勢)
+        out = await generateBookPDF(trip, places, moments, opts);
+      } catch (e) {
+        msg.style.color = 'var(--danger)'; msg.textContent = '產生失敗:' + (e.message || e);
+        go.disabled = false; return;
+      }
+      const { blob, filename } = out;
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      // 產生後直接在同一次點擊裡儲存/分享;若手機因生成耗時使授權過期而擋下,再退回讓使用者親手點一次
+      const manualBtn = () => {
         result.innerHTML = `<button type="button" class="btn primary" id="bm-save">${ic('suitcase')} 儲存 / 分享 PDF</button>`;
         result.querySelector('#bm-save').onclick = async () => {
           try {
             if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: opts.title }); return; }
           } catch (e) { if (e.name === 'AbortError') return; }
-          const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); // 後備:下載
+          const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
         };
-        msg.style.color = 'var(--accent)'; msg.textContent = '完成!按「儲存 / 分享 PDF」存到檔案。';
+      };
+      try {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: opts.title });
+        } else {
+          const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); // 桌機/不支援分享:直接下載
+        }
+        msg.style.color = 'var(--accent)'; msg.textContent = '完成!';
       } catch (e) {
-        msg.style.color = 'var(--danger)'; msg.textContent = '產生失敗:' + (e.message || e);
+        if (e.name !== 'AbortError') { msg.style.color = 'var(--text-dim)'; msg.textContent = '已產生好,請按下方「儲存 / 分享 PDF」。'; manualBtn(); }
       } finally {
         go.disabled = false;
       }
